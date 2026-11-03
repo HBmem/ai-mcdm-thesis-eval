@@ -1,0 +1,193 @@
+{
+    "schema_version": "1.0",
+    "experiment_id": "S01",
+    "name": "Uniform Stakeholder Preferences",
+    "research_purpose": "Verify neutral AHP inputs, two-stage group aggregation, and reproducible TOPSIS outputs with identical judgments.",
+    "scenario": {
+        "id": "transportation_prioritization",
+        "description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
+        "policy_question": "How should a municipal government prioritize transportation improvement initiatives when balancing implementation costs, public accessibility, environmental benefits, and implementation time?"
+    },
+    "resources": {
+        "criteria": "../criteria/transport_v1.json",
+        "alternatives": "../alternative/transport_core_v1.json",
+        "dataset": "../datasets/transport_core_v1.csv",
+        "dataset_join_key": "alternative_id"
+    },
+    "processing": {
+        "weighting_method": "ahp",
+        "ranking_method": "topsis",
+        "weighting": {
+            "wd": "mean"
+        },
+        "ranking": {}
+    },
+    "execution": {
+        "random_seed": 123456
+    },
+    "stakeholders": {
+        "stakeholder_groups": [
+            {
+                "id": "community_residents",
+                "name": "Community Residents",
+                "description": "Residents who use or are affected by the city transportation network.",
+                "voting_power": 0.2
+            },
+            {
+                "id": "transportation_department",
+                "name": "Transportation Department",
+                "description": "City staff responsible for transportation planning, operations, and infrastructure.",
+                "voting_power": 0.2
+            },
+            {
+                "id": "city_government",
+                "name": "City Government",
+                "description": "Elected officials and municipal leadership responsible for citywide policy and resource decisions.",
+                "voting_power": 0.2
+            },
+            {
+                "id": "environmental_advocates",
+                "name": "Environmental Advocates",
+                "description": "Advocates focused on environmental impacts and sustainable transportation.",
+                "voting_power": 0.2
+            },
+            {
+                "id": "business_community",
+                "name": "Business Community",
+                "description": "Local businesses and business organizations affected by transportation access and investment.",
+                "voting_power": 0.2
+            }
+        ],
+        "participant": [
+            {
+                "participant_id": "community_residents_p01",
+                "group_id": "community_residents",
+                "judgments": {
+                    "q1": 0,
+                    "q2": 0,
+                    "q3": 0,
+                    "q4": 0,
+                    "q5": 0,
+                    "q6": 0
+                }
+            },
+            {
+                "participant_id": "transportation_department_p01",
+                "group_id": "transportation_department",
+                "judgments": {
+                    "q1": 0,
+                    "q2": 0,
+                    "q3": 0,
+                    "q4": 0,
+                    "q5": 0,
+                    "q6": 0
+                }
+            },
+            {
+                "participant_id": "city_government_p01",
+                "group_id": "city_government",
+                "judgments": {
+                    "q1": 0,
+                    "q2": 0,
+                    "q3": 0,
+                    "q4": 0,
+                    "q5": 0,
+                    "q6": 0
+                }
+            },
+            {
+                "participant_id": "environmental_advocates_p01",
+                "group_id": "environmental_advocates",
+                "judgments": {
+                    "q1": 0,
+                    "q2": 0,
+                    "q3": 0,
+                    "q4": 0,
+                    "q5": 0,
+                    "q6": 0
+                }
+            },
+            {
+                "participant_id": "business_community_p01",
+                "group_id": "business_community",
+                "judgments": {
+                    "q1": 0,
+                    "q2": 0,
+                    "q3": 0,
+                    "q4": 0,
+                    "q5": 0,
+                    "q6": 0
+                }
+            }
+        ]
+    },
+    "expected_assertions": [
+        {
+            "id": "A1",
+            "check": "all_participant_pairwise_matrices_equal",
+            "expected": true
+        },
+        {
+            "id": "A2",
+            "check": "all_participant_consistency_ratios",
+            "expected": 0.0,
+            "tolerance": 1e-08
+        },
+        {
+            "id": "A3",
+            "check": "all_group_weight_vectors",
+            "expected": [
+                0.25,
+                0.25,
+                0.25,
+                0.25
+            ],
+            "tolerance": 1e-08
+        },
+        {
+            "id": "A4",
+            "check": "session_criterion_weights_in_order_C1_C2_C3_C4",
+            "expected": [
+                0.25,
+                0.25,
+                0.25,
+                0.25
+            ],
+            "tolerance": 1e-08
+        },
+        {
+            "id": "A5",
+            "check": "session_aggregate_pairwise_matrix_all_ones",
+            "expected": true
+        },
+        {
+            "id": "A6",
+            "check": "topsis_closeness_and_ranks_match_reference",
+            "expected": true,
+            "deferred": true
+        }
+    ],
+    "ai_evaluation": {
+        "questions": [
+            "Do stakeholder groups agree on criterion importance?",
+            "Does equal criterion importance imply all alternatives score equally?",
+            "Which alternative ranks first, using the computed results?"
+        ],
+        "required_claims": [
+            "All pairwise comparisons indicate equal criterion importance.",
+            "Stakeholder agreement on weights does not imply equal alternative performance.",
+            "Any named winner must be grounded in computed TOPSIS outputs."
+        ],
+        "prohibited_claims": [
+            "Participants agreed on one alternative merely because their criterion weights match.",
+            "A specific ranking or score not present in the computed results."
+        ]
+    },
+    "output": {
+        "directory": "../results/S01",
+        "save_intermediate_matrices": true,
+        "save_per_group_results": true,
+        "save_topsis_details": true,
+        "save_ai_explanations": true
+    }
+}

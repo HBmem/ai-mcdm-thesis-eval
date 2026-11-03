@@ -1,0 +1,75 @@
+{
+  	"schema_version": "1.0",
+  	"criteria_set_id": "transport_v1",
+  	"description": "Four criteria for synthetic transportation project prioritization. Scores are synthetic.",
+  	"criteria": [
+    	{
+			"id": "C1",
+			"name": "Implementation Cost",
+			"description": "Total financial outlay required to plan, build, and deploy the transportation project. Lower values are preferred because they indicate a more cost-efficient investment.",
+			"data_column": "implementation_cost_musd",
+			"direction": "min",
+			"unit": "million USD",
+			"value_type": "continuous"
+    	},
+    	{
+			"id": "C2",
+			"name": "Accessibility Improvement",
+			"description": "Expected increase in transport accessibility and mobility for users, measured by a synthetic index. Higher values indicate better access and connectivity benefits.",
+			"data_column": "accessibility_score",
+			"direction": "max",
+			"unit": "synthetic 0-100 index",
+			"value_type": "continuous"
+		},
+		{
+			"id": "C3",
+			"name": "Environmental Benefit",
+			"description": "Estimated reduction in negative environmental impacts or improvement in ecological outcomes from the project, represented by a synthetic index. Higher values indicate stronger environmental gains.",
+			"data_column": "environment_score",
+			"direction": "max",
+			"unit": "synthetic 0-100 index",
+			"value_type": "continuous"
+		},
+		{
+			"id": "C4",
+			"name": "Implementation Time",
+			"description": "Expected duration required to complete project delivery and operational launch. Shorter times are preferred because they reduce delays and allow benefits to be realized sooner.",
+			"data_column": "implementation_months",
+			"direction": "min",
+			"unit": "months",
+			"value_type": "continuous"
+    	}
+  	],
+  	"pairwise_question_order": [
+		{
+			"question_id": "q1",
+			"left_criterion_id": "C1",
+			"right_criterion_id": "C2"
+		},
+    	{
+			"question_id": "q2",
+			"left_criterion_id": "C1",
+			"right_criterion_id": "C3"
+		},
+		{
+			"question_id": "q3",
+			"left_criterion_id": "C1",
+			"right_criterion_id": "C4"
+		},
+		{
+			"question_id": "q4",
+			"left_criterion_id": "C2",
+			"right_criterion_id": "C3"
+		},
+		{
+			"question_id": "q5",
+			"left_criterion_id": "C2",
+			"right_criterion_id": "C4"
+		},
+		{
+			"question_id": "q6",
+			"left_criterion_id": "C3",
+			"right_criterion_id": "C4"
+    	}
+  	]
+}

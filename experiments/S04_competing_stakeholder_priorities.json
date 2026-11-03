@@ -1,0 +1,166 @@
+{
+  "schema_version": "2.0",
+  "experiment_id": "S04",
+  "name": "Competing Stakeholder Priorities",
+  "research_purpose": "Competing Stakeholder Priorities",
+  "scenario": {
+    "id": "transportation_prioritization",
+    "description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
+    "policy_question": "How should a municipal government prioritize transportation improvement initiatives when balancing implementation costs, public accessibility, environmental benefits, and implementation time?"
+  },
+  "resources": {
+    "criteria": "../criteria/transport_v1.json",
+    "alternatives": "../alternative/transport_core_v1.json",
+    "dataset": "../datasets/transport_core_v1.csv",
+    "dataset_join_key": "alternative_id"
+  },
+  "processing": {
+    "weighting_method": "ahp",
+    "ranking_method": "topsis",
+    "weighting": {
+      "wd": "mean"
+    },
+    "ranking": {}
+  },
+  "execution": {
+    "random_seed": 123456,
+    "variations": [
+      {
+        "variant_id": "S04",
+        "description": "Quantized target profiles",
+        "parent": "S01",
+        "target_profiles": {
+          "community_residents": [
+            0.15,
+            0.55,
+            0.15,
+            0.15
+          ],
+          "transportation_department": [
+            0.15,
+            0.35,
+            0.15,
+            0.35
+          ],
+          "city_government": [
+            0.45,
+            0.25,
+            0.15,
+            0.15
+          ],
+          "environmental_advocates": [
+            0.1,
+            0.15,
+            0.65,
+            0.1
+          ],
+          "business_community": [
+            0.4,
+            0.3,
+            0.1,
+            0.2
+          ]
+        }
+      }
+    ]
+  },
+  "stakeholders": {
+    "stakeholder_groups": [
+      {
+        "id": "community_residents",
+        "name": "Community Residents",
+        "description": "Residents who use or are affected by the city transportation network.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "transportation_department",
+        "name": "Transportation Department",
+        "description": "City staff responsible for transportation planning, operations, and infrastructure.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "city_government",
+        "name": "City Government",
+        "description": "Elected officials and municipal leadership responsible for citywide policy and resource decisions.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "environmental_advocates",
+        "name": "Environmental Advocates",
+        "description": "Advocates focused on environmental impacts and sustainable transportation.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "business_community",
+        "name": "Business Community",
+        "description": "Local businesses and business organizations affected by transportation access and investment.",
+        "voting_power": 0.2
+      }
+    ],
+    "participants": [
+      {
+        "participant_id": "community_residents_p01",
+        "group_id": "community_residents",
+        "judgments": {
+          "q1": 0.25,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 4.0,
+          "q5": 4.0,
+          "q6": 1.0
+        }
+      },
+      {
+        "participant_id": "transportation_department_p01",
+        "group_id": "transportation_department",
+        "judgments": {
+          "q1": 0.5,
+          "q2": 1.0,
+          "q3": 0.5,
+          "q4": 2.0,
+          "q5": 1.0,
+          "q6": 0.5
+        }
+      },
+      {
+        "participant_id": "city_government_p01",
+        "group_id": "city_government",
+        "judgments": {
+          "q1": 2.0,
+          "q2": 3.0,
+          "q3": 3.0,
+          "q4": 2.0,
+          "q5": 2.0,
+          "q6": 1.0
+        }
+      },
+      {
+        "participant_id": "environmental_advocates_p01",
+        "group_id": "environmental_advocates",
+        "judgments": {
+          "q1": 0.5,
+          "q2": 0.14285714285714285,
+          "q3": 1.0,
+          "q4": 0.25,
+          "q5": 2.0,
+          "q6": 7.0
+        }
+      },
+      {
+        "participant_id": "business_community_p01",
+        "group_id": "business_community",
+        "judgments": {
+          "q1": 1.0,
+          "q2": 4.0,
+          "q3": 2.0,
+          "q4": 3.0,
+          "q5": 2.0,
+          "q6": 0.5
+        }
+      }
+    ]
+  },
+  "expected_assertions": [],
+  "ai_evaluation": {},
+  "output": {}
+}

@@ -1,0 +1,32 @@
+{
+  	"schema_version": "1.0",
+  	"alternative_set_id": "transport_core_v1",
+  	"description": "Five transportation project alternatives",
+  	"alternatives": [
+    	{
+			"id": "A1",
+			"name": "Public Transit Expansion",
+			"description": "Expanded bus routes and frequency"
+		},
+		{
+			"id": "A2",
+			"name": "Bicycle Infrastructure",
+			"description": "Protected bicycle lanes and network connectivity"
+		},
+		{
+			"id": "A3",
+			"name": "Road Infrastructure Improvements",
+			"description": "Repairs and intersection upgrades"
+		},
+		{
+			"id": "A4",
+			"name": "Pedestrian Accessibility",
+			"description": "Sidewalk and crossing upgrades"
+		},
+		{
+			"id": "A5",
+			"name": "Integrated Mobility Program",
+			"description": "Coordinated smaller multi-modal upgrades"
+    	}
+  	]
+}

@@ -1,0 +1,389 @@
+{
+  "schema_version": "2.0",
+  "experiment_id": "S08",
+  "name": "Criterion Weight Perturbation",
+  "research_purpose": "Criterion Weight Perturbation",
+  "scenario": {
+    "id": "transportation_prioritization",
+    "description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
+    "policy_question": "How should a municipal government prioritize transportation improvement initiatives when balancing implementation costs, public accessibility, environmental benefits, and implementation time?"
+  },
+  "resources": {
+    "criteria": "../criteria/transport_v1.json",
+    "alternatives": "../alternative/transport_core_v1.json",
+    "dataset": "../datasets/transport_core_v1.csv",
+    "dataset_join_key": "alternative_id"
+  },
+  "processing": {
+    "weighting_method": "ahp",
+    "ranking_method": "topsis",
+    "weighting": {
+      "wd": "mean"
+    },
+    "ranking": {}
+  },
+  "execution": {
+    "random_seed": 123456,
+    "variations": [
+      {
+        "variant_id": "S08_C1_W0",
+        "description": "C1 weight 0.25",
+        "parent": "S01",
+        "weights": {
+          "C1": 0.25,
+          "C2": 0.25,
+          "C3": 0.25,
+          "C4": 0.25
+        },
+        "sensitivity_criterion": "C1",
+        "sensitivity_weight": 0.25
+      },
+      {
+        "variant_id": "S08_C1_W1",
+        "description": "C1 weight 0.4",
+        "parent": "S08_C1_W0",
+        "weights": {
+          "C1": 0.4,
+          "C2": 0.19999999999999998,
+          "C3": 0.19999999999999998,
+          "C4": 0.19999999999999998
+        },
+        "sensitivity_criterion": "C1",
+        "sensitivity_weight": 0.4
+      },
+      {
+        "variant_id": "S08_C1_W2",
+        "description": "C1 weight 0.55",
+        "parent": "S08_C1_W1",
+        "weights": {
+          "C1": 0.55,
+          "C2": 0.15,
+          "C3": 0.15,
+          "C4": 0.15
+        },
+        "sensitivity_criterion": "C1",
+        "sensitivity_weight": 0.55
+      },
+      {
+        "variant_id": "S08_C1_W3",
+        "description": "C1 weight 0.7",
+        "parent": "S08_C1_W2",
+        "weights": {
+          "C1": 0.7,
+          "C2": 0.10000000000000002,
+          "C3": 0.10000000000000002,
+          "C4": 0.10000000000000002
+        },
+        "sensitivity_criterion": "C1",
+        "sensitivity_weight": 0.7
+      },
+      {
+        "variant_id": "S08_C1_W4",
+        "description": "C1 weight 0.85",
+        "parent": "S08_C1_W3",
+        "weights": {
+          "C1": 0.85,
+          "C2": 0.05000000000000001,
+          "C3": 0.05000000000000001,
+          "C4": 0.05000000000000001
+        },
+        "sensitivity_criterion": "C1",
+        "sensitivity_weight": 0.85
+      },
+      {
+        "variant_id": "S08_C2_W0",
+        "description": "C2 weight 0.25",
+        "parent": "S01",
+        "weights": {
+          "C1": 0.25,
+          "C2": 0.25,
+          "C3": 0.25,
+          "C4": 0.25
+        },
+        "sensitivity_criterion": "C2",
+        "sensitivity_weight": 0.25
+      },
+      {
+        "variant_id": "S08_C2_W1",
+        "description": "C2 weight 0.4",
+        "parent": "S08_C2_W0",
+        "weights": {
+          "C1": 0.19999999999999998,
+          "C2": 0.4,
+          "C3": 0.19999999999999998,
+          "C4": 0.19999999999999998
+        },
+        "sensitivity_criterion": "C2",
+        "sensitivity_weight": 0.4
+      },
+      {
+        "variant_id": "S08_C2_W2",
+        "description": "C2 weight 0.55",
+        "parent": "S08_C2_W1",
+        "weights": {
+          "C1": 0.15,
+          "C2": 0.55,
+          "C3": 0.15,
+          "C4": 0.15
+        },
+        "sensitivity_criterion": "C2",
+        "sensitivity_weight": 0.55
+      },
+      {
+        "variant_id": "S08_C2_W3",
+        "description": "C2 weight 0.7",
+        "parent": "S08_C2_W2",
+        "weights": {
+          "C1": 0.10000000000000002,
+          "C2": 0.7,
+          "C3": 0.10000000000000002,
+          "C4": 0.10000000000000002
+        },
+        "sensitivity_criterion": "C2",
+        "sensitivity_weight": 0.7
+      },
+      {
+        "variant_id": "S08_C2_W4",
+        "description": "C2 weight 0.85",
+        "parent": "S08_C2_W3",
+        "weights": {
+          "C1": 0.05000000000000001,
+          "C2": 0.85,
+          "C3": 0.05000000000000001,
+          "C4": 0.05000000000000001
+        },
+        "sensitivity_criterion": "C2",
+        "sensitivity_weight": 0.85
+      },
+      {
+        "variant_id": "S08_C3_W0",
+        "description": "C3 weight 0.25",
+        "parent": "S01",
+        "weights": {
+          "C1": 0.25,
+          "C2": 0.25,
+          "C3": 0.25,
+          "C4": 0.25
+        },
+        "sensitivity_criterion": "C3",
+        "sensitivity_weight": 0.25
+      },
+      {
+        "variant_id": "S08_C3_W1",
+        "description": "C3 weight 0.4",
+        "parent": "S08_C3_W0",
+        "weights": {
+          "C1": 0.19999999999999998,
+          "C2": 0.19999999999999998,
+          "C3": 0.4,
+          "C4": 0.19999999999999998
+        },
+        "sensitivity_criterion": "C3",
+        "sensitivity_weight": 0.4
+      },
+      {
+        "variant_id": "S08_C3_W2",
+        "description": "C3 weight 0.55",
+        "parent": "S08_C3_W1",
+        "weights": {
+          "C1": 0.15,
+          "C2": 0.15,
+          "C3": 0.55,
+          "C4": 0.15
+        },
+        "sensitivity_criterion": "C3",
+        "sensitivity_weight": 0.55
+      },
+      {
+        "variant_id": "S08_C3_W3",
+        "description": "C3 weight 0.7",
+        "parent": "S08_C3_W2",
+        "weights": {
+          "C1": 0.10000000000000002,
+          "C2": 0.10000000000000002,
+          "C3": 0.7,
+          "C4": 0.10000000000000002
+        },
+        "sensitivity_criterion": "C3",
+        "sensitivity_weight": 0.7
+      },
+      {
+        "variant_id": "S08_C3_W4",
+        "description": "C3 weight 0.85",
+        "parent": "S08_C3_W3",
+        "weights": {
+          "C1": 0.05000000000000001,
+          "C2": 0.05000000000000001,
+          "C3": 0.85,
+          "C4": 0.05000000000000001
+        },
+        "sensitivity_criterion": "C3",
+        "sensitivity_weight": 0.85
+      },
+      {
+        "variant_id": "S08_C4_W0",
+        "description": "C4 weight 0.25",
+        "parent": "S01",
+        "weights": {
+          "C1": 0.25,
+          "C2": 0.25,
+          "C3": 0.25,
+          "C4": 0.25
+        },
+        "sensitivity_criterion": "C4",
+        "sensitivity_weight": 0.25
+      },
+      {
+        "variant_id": "S08_C4_W1",
+        "description": "C4 weight 0.4",
+        "parent": "S08_C4_W0",
+        "weights": {
+          "C1": 0.19999999999999998,
+          "C2": 0.19999999999999998,
+          "C3": 0.19999999999999998,
+          "C4": 0.4
+        },
+        "sensitivity_criterion": "C4",
+        "sensitivity_weight": 0.4
+      },
+      {
+        "variant_id": "S08_C4_W2",
+        "description": "C4 weight 0.55",
+        "parent": "S08_C4_W1",
+        "weights": {
+          "C1": 0.15,
+          "C2": 0.15,
+          "C3": 0.15,
+          "C4": 0.55
+        },
+        "sensitivity_criterion": "C4",
+        "sensitivity_weight": 0.55
+      },
+      {
+        "variant_id": "S08_C4_W3",
+        "description": "C4 weight 0.7",
+        "parent": "S08_C4_W2",
+        "weights": {
+          "C1": 0.10000000000000002,
+          "C2": 0.10000000000000002,
+          "C3": 0.10000000000000002,
+          "C4": 0.7
+        },
+        "sensitivity_criterion": "C4",
+        "sensitivity_weight": 0.7
+      },
+      {
+        "variant_id": "S08_C4_W4",
+        "description": "C4 weight 0.85",
+        "parent": "S08_C4_W3",
+        "weights": {
+          "C1": 0.05000000000000001,
+          "C2": 0.05000000000000001,
+          "C3": 0.05000000000000001,
+          "C4": 0.85
+        },
+        "sensitivity_criterion": "C4",
+        "sensitivity_weight": 0.85
+      }
+    ]
+  },
+  "stakeholders": {
+    "stakeholder_groups": [
+      {
+        "id": "community_residents",
+        "name": "Community Residents",
+        "description": "Residents who use or are affected by the city transportation network.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "transportation_department",
+        "name": "Transportation Department",
+        "description": "City staff responsible for transportation planning, operations, and infrastructure.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "city_government",
+        "name": "City Government",
+        "description": "Elected officials and municipal leadership responsible for citywide policy and resource decisions.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "environmental_advocates",
+        "name": "Environmental Advocates",
+        "description": "Advocates focused on environmental impacts and sustainable transportation.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "business_community",
+        "name": "Business Community",
+        "description": "Local businesses and business organizations affected by transportation access and investment.",
+        "voting_power": 0.2
+      }
+    ],
+    "participants": [
+      {
+        "participant_id": "community_residents_p01",
+        "group_id": "community_residents",
+        "judgments": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      },
+      {
+        "participant_id": "transportation_department_p01",
+        "group_id": "transportation_department",
+        "judgments": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      },
+      {
+        "participant_id": "city_government_p01",
+        "group_id": "city_government",
+        "judgments": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      },
+      {
+        "participant_id": "environmental_advocates_p01",
+        "group_id": "environmental_advocates",
+        "judgments": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      },
+      {
+        "participant_id": "business_community_p01",
+        "group_id": "business_community",
+        "judgments": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      }
+    ]
+  },
+  "expected_assertions": [],
+  "ai_evaluation": {},
+  "output": {}
+}

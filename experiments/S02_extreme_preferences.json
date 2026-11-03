@@ -1,0 +1,261 @@
+{
+    "schema_version": "1.0",
+    "experiment_id": "S02",
+    "name": "Extreme pairwise response boundaries",
+    "research_purpose": "Test upper/lower Saaty reciprocal bounds, matrix construction, consistency warnings, aggregation, and rankings. All-max/all-min patterns may be inconsistent.",
+    "scenario": {
+        "id": "transportation_prioritization",
+        "description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
+        "policy_question": "How should a municipal government prioritize transportation improvement initiatives when balancing implementation costs, public accessibility, environmental benefits, and implementation time?"
+    },
+    "resources": {
+        "criteria": "../criteria/transport_v1.json",
+        "alternatives": "../alternative/transport_core_v1.json",
+        "dataset": "../datasets/transport_core_v1.csv",
+        "dataset_join_key": "alternative_id"
+    },
+    "processing": {
+        "weight_method": "ahp",
+        "ranking_method": "topsis",
+        "weighting": {
+            "wd": "mean"
+        },
+        "ranking": {}
+    },
+    "execution": {
+        "random_seed": 123456,
+        "variants": true
+    },
+    "stakeholders": {
+        "stakeholder_groups": [
+            {
+                "id": "community_residents",
+                "name": "Community Residents",
+                "description": "Residents who use or are affected by the city transportation network.",
+                "voting_power": 0.2
+            },
+            {
+                "id": "transportation_department",
+                "name": "Transportation Department",
+                "description": "City staff responsible for transportation planning, operations, and infrastructure.",
+                "voting_power": 0.2
+            },
+            {
+                "id": "city_government",
+                "name": "City Government",
+                "description": "Elected officials and municipal leadership responsible for citywide policy and resource decisions.",
+                "voting_power": 0.2
+            },
+            {
+                "id": "environmental_advocates",
+                "name": "Environmental Advocates",
+                "description": "Advocates focused on environmental impacts and sustainable transportation.",
+                "voting_power": 0.2
+            },
+            {
+                "id": "business_community",
+                "name": "Business Community",
+                "description": "Local businesses and business organizations affected by transportation access and investment.",
+                "voting_power": 0.2
+            }
+        ],
+        "participant_variants": [
+            {
+                "variant_id": "S02_MAX",
+                "description": "For every q1-q6, first criterion in the configured pair is rated extremely more important than the second.",
+                "participants": [
+                    {
+                        "participant_id": "community_residents_p01",
+                        "group_id": "community_residents",
+                        "judgments": {
+                            "q1": 4,
+                            "q2": 4,
+                            "q3": 4,
+                            "q4": 4,
+                            "q5": 4,
+                            "q6": 4
+                        }
+                    },
+                    {
+                        "participant_id": "transportation_department_p01",
+                        "group_id": "transportation_department",
+                        "judgments": {
+                            "q1": 4,
+                            "q2": 4,
+                            "q3": 4,
+                            "q4": 4,
+                            "q5": 4,
+                            "q6": 4
+                        }
+                    },
+                    {
+                        "participant_id": "city_government_p01",
+                        "group_id": "city_government",
+                        "judgments": {
+                            "q1": 4,
+                            "q2": 4,
+                            "q3": 4,
+                            "q4": 4,
+                            "q5": 4,
+                            "q6": 4
+                        }
+                    },
+                    {
+                        "participant_id": "environmental_advocates_p01",
+                        "group_id": "environmental_advocates",
+                        "judgments": {
+                            "q1": 4,
+                            "q2": 4,
+                            "q3": 4,
+                            "q4": 4,
+                            "q5": 4,
+                            "q6": 4
+                        }
+                    },
+                    {
+                        "participant_id": "business_community_p01",
+                        "group_id": "business_community",
+                        "judgments": {
+                            "q1": 4,
+                            "q2": 4,
+                            "q3": 4,
+                            "q4": 4,
+                            "q5": 4,
+                            "q6": 4
+                        }
+                    }
+                ]
+            },
+            {
+                "variant_id": "S02_MIN",
+                "description": "For every q1-q6, second criterion in the configured pair is rated extremely more important than the first.",
+                "participants": [
+                    {
+                        "participant_id": "community_residents_p01",
+                        "group_id": "community_residents",
+                        "judgments": {
+                            "q1": -4,
+                            "q2": -4,
+                            "q3": -4,
+                            "q4": -4,
+                            "q5": -4,
+                            "q6": -4
+                        }
+                    },
+                    {
+                        "participant_id": "transportation_department_p01",
+                        "group_id": "transportation_department",
+                        "judgments": {
+                            "q1": -4,
+                            "q2": -4,
+                            "q3": -4,
+                            "q4": -4,
+                            "q5": -4,
+                            "q6": -4
+                        }
+                    },
+                    {
+                        "participant_id": "city_government_p01",
+                        "group_id": "city_government",
+                        "judgments": {
+                            "q1": -4,
+                            "q2": -4,
+                            "q3": -4,
+                            "q4": -4,
+                            "q5": -4,
+                            "q6": -4
+                        }
+                    },
+                    {
+                        "participant_id": "environmental_advocates_p01",
+                        "group_id": "environmental_advocates",
+                        "judgments": {
+                            "q1": -4,
+                            "q2": -4,
+                            "q3": -4,
+                            "q4": -4,
+                            "q5": -4,
+                            "q6": -4
+                        }
+                    },
+                    {
+                        "participant_id": "business_community_p01",
+                        "group_id": "business_community",
+                        "judgments": {
+                            "q1": -4,
+                            "q2": -4,
+                            "q3": -4,
+                            "q4": -4,
+                            "q5": -4,
+                            "q6": -4
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    "expected_assertions": [
+        {
+            "id": "B1",
+            "check": "submitted_values_in_saaty_domain",
+            "expected": true
+        },
+        {
+            "id": "B2",
+            "check": "reciprocal_matrices",
+            "expected": true
+        },
+        {
+            "id": "B3",
+            "check": "all_participants_identical_within_each_variant",
+            "expected": true
+        },
+        {
+            "id": "B4",
+            "check": "all_participants_CR_exceeds_warning_threshold_in_each_variant",
+            "expected": true
+        },
+        {
+            "id": "B5",
+            "check": "inconsistent_inputs_retained_and_flagged",
+            "expected": true
+        },
+        {
+            "id": "B6",
+            "check": "computed_results_match_independent_reference_per_variant",
+            "expected": true,
+            "deferred": true
+        },
+        {
+            "id": "B7",
+            "check": "max_and_min_variants_have_distinct_aggregate_weights",
+            "expected": true
+        }
+    ],
+    "ai_evaluation": {
+        "questions": [
+            "What does a MAX or MIN response mean given the fixed order of each pair?",
+            "Are these extreme but internally consistent preference patterns?",
+            "Were inconsistent inputs retained and flagged?",
+            "How do the two resulting criterion-weight vectors and rankings differ?"
+        ],
+        "required_claims": [
+            "9 and 1/9 reverse the direction of a pairwise comparison.",
+            "A pattern of all 9s or all 1/9s on the six upper-triangle questions is generally inconsistent for four criteria.",
+            "The input policy retains judgments and flags consistency warnings.",
+            "Numerical weight or rank comparisons must come from the actual run."
+        ],
+        "prohibited_claims": [
+            "Extreme intensity necessarily indicates consistency.",
+            "Any participant was excluded because CR was too high.",
+            "A fabricated rank change."
+        ]
+    },
+    "output": {
+        "directory": "../results/S02",
+        "save_intermediate_matrices": true,
+        "save_per_group_results": true,
+        "save_topsis_details": true,
+        "save_ai_explanations": true
+    }
+}

@@ -1,0 +1,193 @@
+{
+  "schema_version": "2.0",
+  "experiment_id": "S07",
+  "name": "Removal of Evaluation Criterion",
+  "research_purpose": "Removal of Evaluation Criterion",
+  "scenario": {
+    "id": "transportation_prioritization",
+    "description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
+    "policy_question": "How should a municipal government prioritize transportation improvement initiatives when balancing implementation costs, public accessibility, environmental benefits, and implementation time?"
+  },
+  "resources": {
+    "criteria": "../criteria/transport_v1.json",
+    "alternatives": "../alternative/transport_core_v1.json",
+    "dataset": "../datasets/transport_core_v1.csv",
+    "dataset_join_key": "alternative_id"
+  },
+  "processing": {
+    "weighting_method": "ahp",
+    "ranking_method": "topsis",
+    "weighting": {
+      "wd": "mean"
+    },
+    "ranking": {}
+  },
+  "execution": {
+    "random_seed": 123456,
+    "variations": [
+      {
+        "variant_id": "S07_C1",
+        "description": "Remove C1",
+        "parent": "S01",
+        "remove_criteria": [
+          "C1"
+        ],
+        "reuse_parent_weights": true,
+        "expected_assertions": [
+          {
+            "id": "preserved_weights",
+            "check": "parent_weights_preserved",
+            "expected": true
+          }
+        ]
+      },
+      {
+        "variant_id": "S07_C2",
+        "description": "Remove C2",
+        "parent": "S01",
+        "remove_criteria": [
+          "C2"
+        ],
+        "reuse_parent_weights": true,
+        "expected_assertions": [
+          {
+            "id": "preserved_weights",
+            "check": "parent_weights_preserved",
+            "expected": true
+          }
+        ]
+      },
+      {
+        "variant_id": "S07_C3",
+        "description": "Remove C3",
+        "parent": "S01",
+        "remove_criteria": [
+          "C3"
+        ],
+        "reuse_parent_weights": true,
+        "expected_assertions": [
+          {
+            "id": "preserved_weights",
+            "check": "parent_weights_preserved",
+            "expected": true
+          }
+        ]
+      },
+      {
+        "variant_id": "S07_C4",
+        "description": "Remove C4",
+        "parent": "S01",
+        "remove_criteria": [
+          "C4"
+        ],
+        "reuse_parent_weights": true,
+        "expected_assertions": [
+          {
+            "id": "preserved_weights",
+            "check": "parent_weights_preserved",
+            "expected": true
+          }
+        ]
+      }
+    ]
+  },
+  "stakeholders": {
+    "stakeholder_groups": [
+      {
+        "id": "community_residents",
+        "name": "Community Residents",
+        "description": "Residents who use or are affected by the city transportation network.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "transportation_department",
+        "name": "Transportation Department",
+        "description": "City staff responsible for transportation planning, operations, and infrastructure.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "city_government",
+        "name": "City Government",
+        "description": "Elected officials and municipal leadership responsible for citywide policy and resource decisions.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "environmental_advocates",
+        "name": "Environmental Advocates",
+        "description": "Advocates focused on environmental impacts and sustainable transportation.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "business_community",
+        "name": "Business Community",
+        "description": "Local businesses and business organizations affected by transportation access and investment.",
+        "voting_power": 0.2
+      }
+    ],
+    "participants": [
+      {
+        "participant_id": "community_residents_p01",
+        "group_id": "community_residents",
+        "judgments": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      },
+      {
+        "participant_id": "transportation_department_p01",
+        "group_id": "transportation_department",
+        "judgments": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      },
+      {
+        "participant_id": "city_government_p01",
+        "group_id": "city_government",
+        "judgments": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      },
+      {
+        "participant_id": "environmental_advocates_p01",
+        "group_id": "environmental_advocates",
+        "judgments": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      },
+      {
+        "participant_id": "business_community_p01",
+        "group_id": "business_community",
+        "judgments": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      }
+    ]
+  },
+  "expected_assertions": [],
+  "ai_evaluation": {},
+  "output": {}
+}
