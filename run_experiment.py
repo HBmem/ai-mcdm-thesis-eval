@@ -5,6 +5,8 @@ import sys
 
 from src.load_experiments import load_experiments
 from src.runner import build_plan, execute_batch
+from src.comprehension import AIConfig
+from src.preflight import PreflightError, check_model_access
 
 ROOT = Path(__file__).resolve().parent
 
@@ -28,7 +30,20 @@ def main(argv=None):
         print(f"Validated {len(plan)} runs: " + ", ".join(c.key for c in plan))
         return 0
     try:
-        path, results = execute_batch(plan, args.output)
+        ai_config = AIConfig.from_env()
+    except ValueError as error:
+        print(f"Configuration error: {error}", file=sys.stderr)
+        return 2
+    try:
+        with ai_config.client() as client:
+            print("Checking AI key and model access...")
+            preflight = check_model_access(ai_config, client)
+            print("AI access check passed.")
+            path, results = execute_batch(plan, args.output, ai_config=ai_config,
+                                          ai_client=client, preflight=preflight)
+    except PreflightError as error:
+        print(f"AI startup check failed: {error}", file=sys.stderr)
+        return error.exit_code
     except OSError as error:
         print(f"Artifact error: {error}", file=sys.stderr)
         return 1

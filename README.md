@@ -6,7 +6,8 @@ There are 40 executable variations across S1–S10.
 
 The reference engine does **not** call `MCDMService` or `pyDecision`. Passing its
 analytical checks and scenario invariants does not validate PoliInsight. External
-application comparisons and AI interpretation evaluation are deferred.
+application comparisons remain deferred. Each successful experiment also runs the
+Data Comprehension layer against the saved numerical evidence.
 
 ## Setup and use
 
@@ -17,6 +18,8 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python run_experiment.py validate --experiments experiments
+cp .env.example .env
+# Edit .env to set OLLAMA_API_KEY and OLLAMA_MODEL.
 python run_experiment.py run --experiments experiments --output results
 streamlit run app.py -- --results results
 ```
@@ -34,12 +37,17 @@ relative to the current directory. Resource paths **inside** an experiment are
 relative to that experiment JSON file.
 
 Exit codes: `0` for successful validation/execution, `1` for a calculation,
-assertion, or artifact-write failure, and `2` for invalid configuration/arguments.
+assertion, comprehension, or artifact-write failure, and `2` for invalid configuration/arguments.
+`validate` requires no AI configuration. `run` requires both Ollama environment variables
+and rejects missing configuration before creating a batch. Configuration loads from
+the repository-root `.env` using python-dotenv, even when invoked from another
+directory. Existing environment variables take precedence; a blank environment
+variable is not replaced by the file. `.env` is gitignored and must stay private.
 A failed parent blocks its dependents while independent cases continue.
 
-The dashboard only reads saved results. Filters never run experiments. Its five
-views show status/assertions, experimental variables, intermediate calculations,
-baseline comparisons/sensitivity plots, and provenance/downloads.
+The dashboard only reads saved results. Filters never run experiments. Its views show
+status/assertions, experimental variables, intermediate calculations, baseline
+comparisons/sensitivity plots, individual AI calls, and provenance/downloads.
 
 ## Input schemas and variations
 
@@ -143,7 +151,9 @@ batches are never reused. Files are written atomically:
 ```text
 results/<timestamp>_<unique-id>/
   manifest.json       # batch status and run entries
+  preflight.json      # successful CLI startup access check, when present
   <run-uuid>.json     # versioned RunResult for each case
+  <run-uuid>.call.<call-uuid>.json  # atomically saved model attempt, including failures
   summary.csv
   rankings.csv
   weights.csv
@@ -187,3 +197,123 @@ aggregation invariants, consistency retention, TOPSIS boundary cases, ID-aligned
 comparisons, dependency failures, repeatability, CLI exit codes, and Streamlit
 `AppTest` scenarios. The dev dependencies include `pyDecision` solely for the
 existing legacy service regression tests.
+
+## Data Comprehension layer
+
+Every mathematically successful case runs three sequential calls: session
+understanding, stakeholder-group profiles, then session profile. Deterministic
+context assembly precedes those calls. Validated results are available as
+`RunResult.comprehension.state`; `comprehension.context` supports fact retrieval.
+Later explanation and advisory stages are outside this implementation.
+
+The client is the OpenAI Python SDK configured for Ollama Cloud. The default
+endpoint is `https://ollama.com/v1`; override it with `OLLAMA_BASE_URL` for a
+compatible endpoint. Set `OLLAMA_MODEL` to the exact API model identifier and
+`OLLAMA_API_KEY` outside source control. Neither credential values nor SDK request
+headers are saved. Tests inject clients; production has no synthetic fallback.
+`execute_batch(..., ai_config=..., ai_client=...)` is the injection boundary.
+
+Ollama Cloud does not currently enforce structured-output schemas. Prompts include
+the schema; responses must be strict JSON and pass Pydantic and evidence validation.
+Each request has a 120-second timeout and up to two retries for transient transport
+or rate/server errors. Every attempt has its own audit record. Malformed or
+unsupported output fails immediately. Successful prior stages remain available for
+audit, while subsequent stages stop. Required comprehension failures fail the case
+and block dependent cases; existing deterministic calculation traces are retained.
+
+Context uses resolved variation inputs, original preference dimensions, current
+ranking dimensions, source hashes, processing versions, explicit entity references,
+and deterministic evidence. Missing objectives, constraints, stakeholder statements,
+and other absent metadata remain gaps. Model interpretations are never evidence for
+other model interpretations: reused findings must retain original citations and
+qualifications. Every structured factual claim is checked; prose is screened but
+cannot be completely verified by these rules. Human review remains necessary.
+
+The diagnostic suite reports within-group weight ranges and population standard
+deviations; pairwise Spearman rho and Kendall tau-b for participant/group rankings;
+leave-one-participant/group-out comparisons; criterion-weight factors of 0.8, 0.9,
+1.1 and 1.2 with other weights proportionally rescaled; and single-criterion removal
+with remaining weights normalized. Group/participant rankings use group/participant
+preferences over current ranking criteria. Fixed applied experiment weights remain
+fixed in omission experiments. Undefined correlations, empty-group omissions and
+infeasible weight perturbations retain explicit reasons. Single-criterion omission
+tests TOPSIS with retained weights, without deriving a replacement AHP model.
+These diagnostics are descriptive and conditional, with no high/low agreement or
+universal robustness classification. Participant influence cases are grouped without
+participant identifiers; no population representativeness or causal effect is inferred.
+
+Artifact schema `1.1` adds typed comprehension state and per-attempt call records.
+The dashboard continues to read `1.0` artifacts. Call sidecars are saved immediately,
+so they survive a later stage failure or interruption; the final run JSON embeds the
+same records. Interrupted batches may require inspecting sidecars directly because
+the run manifest is finalized separately. Historical batches remain immutable.
+Fresh runs regenerate comprehension. `context_package` requires matching run,
+source and configuration hashes before supplying a downstream task package.
+
+The main dashboard's **AI calls** view associates the selected call and attempt
+with its run, exact role-labelled messages, structured input, output schema, raw and
+parsed response, verification results, receipt, and errors. It never invokes a model.
+Prompts use aggregate allowlisted data; source metadata needing redaction is rejected
+before sending. Export/display sanitization removes known credentials, recognizable
+secret fields, bearer tokens and email addresses. Redacted records are labelled.
+Arbitrary sensitive prose cannot be identified reliably: source metadata still needs
+appropriate review. The separate `dashboard_demo` is unchanged.
+
+Verification uses the test-only client in `tests/dcl_fakes.py`, including a localhost
+OpenAI-compatible server for real SDK/CLI tests. These exercise transport integration
+without measuring a live model's interpretation quality. A live Cloud experiment
+requires configured credentials and an available model.
+
+## Startup API-key and model verification
+
+Before `run` creates a batch or calculates experiment results, it makes one short
+Chat Completions request with the configured key, endpoint and model. The request
+contains only a fixed connectivity-check message, uses `max_tokens=8`, has a
+30-second timeout, and disables SDK retries. It consumes a small amount of Cloud
+usage. Both normal and token-limited finishes can confirm model access; the check
+does not require the model to echo an exact reply. This verifies current access,
+not future availability, DCL schema adherence or interpretation quality.
+
+An authentication/permission failure or rejected model/request returns exit code
+`2`. Connection failures, timeouts, rate limits, provider errors and malformed
+responses return `1`; these do not establish that the key or model is invalid.
+Failed checks create no experiment artifacts. The successful probe is saved once
+as `preflight.json` and is shown under **Batch startup check** in the dashboard's
+**AI calls** view, separately from per-run comprehension calls. The CLI reuses and
+closes the same SDK client for the experiment batch. `validate` remains offline.
+
+`AIConfig.from_env(env_file=None)` disables file loading for isolated tests or
+explicit environment-only use. Direct `execute_batch()` callers retain their
+existing injection boundary and do not automatically perform a startup probe.
+
+## Comprehension validation failures
+
+Successful startup access does not guarantee a valid comprehension response. The
+CLI now reports the failed phase and validation reasons (for example, missing
+structured checks, invalid subject IDs or unqualified uncertainty), with full
+per-claim details retained in the call audit. Dependent cases remain blocked when
+a required parent fails.
+
+Prompt version `dcl-prompt-v3` supplies stage-specific coverage rules, explicit
+allowed subject IDs, valid finding examples and an evidence-populated output
+template. The template is request guidance only: the application never merges it
+into a response or silently repairs missing checks/citations. Unfilled instruction
+placeholders and malformed or unsupported responses still fail validation.
+
+Model context uses compact diagnostic summaries rather than repeating every full
+comparison vector. All tested conditions, winner/rank/tie exceptions, correlation
+outcomes and coverage gaps remain represented; full calculations remain in the
+saved authoritative evidence for retrieval. Explicit robustness findings identify
+which interventions changed the winner, including exceptions to apparent stability.
+Code/dependency hashes remain audit metadata rather than repeated model evidence.
+This reduces context-window exhaustion while preserving traceability and minority
+outcomes. Generated prose is still screened rather than proven correct.
+
+Agreement findings describe the modeled group results. Identical aggregate rankings
+do not establish participant unanimity, population consensus or absence of minority
+views. The session-profile template includes this qualification, a conditional
+assessment, preference uncertainty and citations to participation/statement gaps.
+These are supplied as request guidance; invalid model assertions are still rejected,
+not rewritten or silently accepted. The conservative wording screen recognizes
+explicit local negations (such as “does not establish participant unanimity”);
+a negation in another sentence or contrastive clause does not exempt an assertion.

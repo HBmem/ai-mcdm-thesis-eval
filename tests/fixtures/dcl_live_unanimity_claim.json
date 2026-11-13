@@ -1,0 +1,18 @@
+{
+  "claim_id": "session_profile:finding:4",
+  "claim_type": "supported_interpretation",
+  "subject_ids": [],
+  "check": null,
+  "dependency_ids": [],
+  "assumptions": [],
+  "uncertainty_category": null,
+  "statement": "Because all groups share the same ranking, there is no observed disagreement; the analysis therefore reports unanimous agreement with no minority deviation.",
+  "assessment": "supported",
+  "evidence": [
+    {
+      "source": "derived",
+      "fact_id": "derived/diagnostics/summaries/cross_group_agreement"
+    }
+  ],
+  "caveats": []
+}

@@ -1,0 +1,78 @@
+{
+  "unchecked_factual_claim": {
+    "claim_id": "c1f1",
+    "claim_type": "authoritative_fact",
+    "subject_ids": [
+      "C1"
+    ],
+    "check": null,
+    "dependency_ids": [],
+    "assumptions": [],
+    "uncertainty_category": null,
+    "statement": "Implementation Cost measures total financial outlay required to plan, build, and deploy the transportation project in million USD. Lower values are preferred (minimization).",
+    "assessment": "supported",
+    "evidence": [
+      {
+        "source": "authoritative",
+        "fact_id": "authoritative/criteria/C1/name"
+      },
+      {
+        "source": "authoritative",
+        "fact_id": "authoritative/criteria/C1/description"
+      },
+      {
+        "source": "authoritative",
+        "fact_id": "authoritative/criteria/C1/unit"
+      },
+      {
+        "source": "authoritative",
+        "fact_id": "authoritative/criteria/C1/direction"
+      }
+    ],
+    "caveats": []
+  },
+  "unqualified_uncertainty": {
+    "claim_id": "gap1",
+    "claim_type": "uncertainty",
+    "subject_ids": [
+      "objectives"
+    ],
+    "check": null,
+    "dependency_ids": [],
+    "assumptions": [],
+    "uncertainty_category": "missing_information",
+    "statement": "Objectives are not recorded in available application inputs.",
+    "assessment": "insufficient_evidence",
+    "evidence": [
+      {
+        "source": "completeness",
+        "fact_id": "completeness/objectives"
+      }
+    ],
+    "caveats": []
+  },
+  "unknown_subject": {
+    "claim_id": "df1",
+    "claim_type": "supported_interpretation",
+    "subject_ids": [
+      "S01"
+    ],
+    "check": null,
+    "dependency_ids": [],
+    "assumptions": [],
+    "uncertainty_category": null,
+    "statement": "The policy question asks how a municipal government should prioritize transportation improvement initiatives balancing implementation cost, public accessibility, environmental benefits, and implementation time. The session describes a synthetic municipal transportation project selection with no empirical or stakeholder survey claims.",
+    "assessment": "supported",
+    "evidence": [
+      {
+        "source": "authoritative",
+        "fact_id": "authoritative/scenario/policy_question"
+      },
+      {
+        "source": "authoritative",
+        "fact_id": "authoritative/scenario/description"
+      }
+    ],
+    "caveats": []
+  }
+}

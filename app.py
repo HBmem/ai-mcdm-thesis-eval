@@ -8,14 +8,21 @@ from pydantic import ValidationError
 import streamlit as st
 
 from src.results import RunResult, safe_artifact
+from src.privacy import sanitize
+from src.preflight import PreflightRecord
 
 ROOT = Path(__file__).resolve().parent
 
 
-@st.cache_data
+@st.cache_data(max_entries=128)
 def decode_result(payload: bytes) -> dict:
     try:
-        return RunResult.model_validate_json(payload).model_dump()
+        value = RunResult.model_validate_json(payload).model_dump(mode="json")
+        clean = sanitize(value)
+        if value.get("comprehension"):
+            for original, call in zip(value["comprehension"]["calls"], clean["comprehension"]["calls"]):
+                call["redacted"] = original["redacted"] or original != call
+        return clean
     except (TypeError, AttributeError, KeyError) as error:
         raise ValueError(f"Malformed result structure: {error}") from error
 
@@ -38,6 +45,33 @@ def read_manifest(path):
     return value
 
 
+def call_details(call):
+    st.caption("Sensitive values are redacted in displays and downloads; redacted content is labelled.")
+    if call.get("redacted"):
+        st.warning("This call record contains redacted content.")
+    st.download_button("Download selected call JSON", json.dumps(call, indent=2),
+        file_name=f"{call["call_id"]}.json", mime="application/json", key=f"download-{call["call_id"]}")
+    st.subheader("Prompt messages")
+    for message in call["messages"]:
+        st.caption(message["role"])
+        st.code(message["content"], language="text")
+    st.subheader("Structured input")
+    st.json(call["input"])
+    st.subheader("Output")
+    if call.get("parsed_output") is not None:
+        st.json(call.get("parsed_output"))
+    if call["raw_output"] is not None:
+        with st.expander("Raw model output"):
+            st.code(call["raw_output"], language="text")
+    if call.get("error"):
+        st.error(f"{call['error']['type']}: {call['error']['message']}")
+        st.json(call.get("error"))
+    if call.get("verification"):
+        st.json(call.get("verification"))
+    with st.expander("Call configuration, schema, and receipt"):
+        st.json({k: call.get(k) for k in ("configuration", "output_schema", "receipt", "response", "started_at", "completed_at", "duration_seconds")})
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--results", type=Path, default=ROOT / "results")
@@ -45,7 +79,7 @@ def main(argv=None):
     results_root = args.results.resolve()
     st.set_page_config(page_title="MCDM evaluations", layout="wide")
     st.title("MCDM evaluations")
-    st.caption("Independent deterministic reference results. PoliInsight comparison and AI interpretation evaluation are deferred.")
+    st.caption("Independent deterministic reference results. PoliInsight comparison and AI interpretations are evidence-screened; semantic correctness still requires review.")
     batches = []
     if results_root.is_dir():
         for path in sorted(results_root.glob("*/manifest.json"), reverse=True):
@@ -77,8 +111,8 @@ def main(argv=None):
         return
     st.subheader(result["name"])
     st.caption(f"Run: {result['run_id']} · Case: {result['case_key']}")
-    overview, variables, calculations, comparisons, exports = st.tabs(
-        ["Overview", "Variables", "Calculations", "Comparisons", "Provenance/export"]
+    overview, variables, calculations, comparisons, ai_calls, exports = st.tabs(
+        ["Overview", "Variables", "Calculations", "Comparisons", "AI calls", "Provenance/export"]
     )
     with overview:
         st.metric("Status", result["status"])
@@ -176,13 +210,44 @@ def main(argv=None):
                 st.line_chart(frame[frame["criterion"] == criterion].pivot(index="weight", columns="alternative", values="score"))
                 st.caption("Winner changes are bounded by tested weight intervals; exact thresholds were not calculated.")
                 st.dataframe(pd.DataFrame(intervals))
+    with ai_calls:
+        preflight_path = batch / "preflight.json"
+        if preflight_path.is_file():
+            try:
+                preflight = PreflightRecord.model_validate_json(safe_artifact(batch, "preflight.json").read_bytes())
+                if preflight.batch_id != batch.name:
+                    raise ValueError("Startup check belongs to a different batch.")
+                original = preflight.model_dump(mode="json")
+                startup_call = sanitize(original)
+                startup_call["redacted"] = original["redacted"] or original != startup_call
+                with st.expander("Batch startup check"):
+                    st.caption(f"Call: {startup_call['call_id']} · Batch: {startup_call['batch_id']} · Startup access check")
+                    st.caption("This probe checked key/model access before experiment calculations. It does not validate DCL interpretations.")
+                    call_details(startup_call)
+            except (OSError, ValueError) as error:
+                st.warning("Cannot read batch startup check: invalid or inaccessible audit record.")
+        comprehension = result.get("comprehension")
+        if not comprehension:
+            st.info("No AI calls recorded. This may be a legacy artifact or a run that did not reach comprehension.")
+        else:
+            st.caption(f"Comprehension: {comprehension['status']} · Run: {result['run_id']}")
+            calls = comprehension["calls"]
+            if not calls:
+                st.info("No model calls were attempted.")
+            else:
+                selected_call = st.selectbox("AI call", range(len(calls)),
+                    format_func=lambda i: f"{i+1}. {calls[i]['stage']} · attempt {calls[i]['attempt']} · {calls[i]['status']}",
+                    key=f"ai-call-{result['run_id']}")
+                call = calls[selected_call]
+                st.caption(f"Call: {call['call_id']} · Run: {call['run_id']} · Stage: {call['stage']}")
+                call_details(call)
     with exports:
         st.json(result["provenance"])
-        st.download_button("Download run JSON", payload, file_name=f"{result['run_id']}.json", mime="application/json")
+        st.download_button("Download run JSON", json.dumps(sanitize(result), indent=2), file_name=f"{result['run_id']}.json", mime="application/json")
         for filename in ("summary.csv", "rankings.csv", "weights.csv", "assertions.csv"):
             path = batch / filename
             if path.is_file() and path.resolve().parent == batch.resolve():
-                st.download_button(f"Download {filename}", path.read_bytes(), file_name=filename, mime="text/csv")
+                st.download_button(f"Download {filename}", sanitize(path.read_text()), file_name=filename, mime="text/csv")
 
 
 if __name__ == "__main__":

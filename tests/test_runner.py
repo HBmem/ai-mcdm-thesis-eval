@@ -5,6 +5,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+
+from dcl_fakes import execute_test_batch, CloudServer
 from unittest.mock import patch
 
 import numpy as np
@@ -15,6 +17,8 @@ from src.results import RunResult, safe_artifact
 from src.runner import ROOT, Case, build_plan, execute_batch
 from src.variations import ExecutionVariation
 
+
+execute_batch = execute_test_batch
 
 class RunnerTests(unittest.TestCase):
     @classmethod
@@ -192,20 +196,24 @@ class RunnerTests(unittest.TestCase):
         self.assertIn('injected arithmetic failure',results[0].execution['messages'][0])
 
     def test_cli_exit_codes_and_foreign_working_directory(self):
-        with tempfile.TemporaryDirectory() as root:
+        with tempfile.TemporaryDirectory() as root, CloudServer() as server:
             command=[sys.executable,str(ROOT/'run_experiment.py')]
-            valid=subprocess.run([*command,'validate','--scenario','S08'],cwd=root,capture_output=True,text=True)
+            valid=subprocess.run([*command,'validate','--scenario','S08'],cwd=root,capture_output=True,text=True,env=server.env)
             self.assertEqual(valid.returncode,0,valid.stderr)
             self.assertIn('21 runs',valid.stdout)
-            invalid=subprocess.run([*command,'run','--scenario','S99','--output',root],cwd=root,capture_output=True,text=True)
+            invalid=subprocess.run([*command,'run','--scenario','S99','--output',root],cwd=root,capture_output=True,text=True,env=server.env)
             self.assertEqual(invalid.returncode,2)
             self.assertFalse(list(Path(root).iterdir()))
-            success=subprocess.run([*command,'run','--scenario','S01','--output',root],cwd=root,capture_output=True,text=True)
+            success=subprocess.run([*command,'run','--scenario','S01','--output',root],cwd=root,capture_output=True,text=True,env=server.env)
             self.assertEqual(success.returncode,0,success.stderr)
+            preflight=json.loads(next(Path(root).glob('*/preflight.json')).read_text())
+            self.assertEqual(preflight['stage'],'startup_check')
+            self.assertEqual(preflight['raw_output'],'OK')
+            self.assertEqual(preflight['input']['max_tokens'],8)
 
     def test_cli_calculation_assertion_failure_exit_code(self):
         from shutil import copytree
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory() as directory, CloudServer() as server:
             root=Path(directory)
             for name in ('experiments','criteria','alternative','datasets'):
                 copytree(ROOT/name,root/name)
@@ -214,7 +222,7 @@ class RunnerTests(unittest.TestCase):
             config['expected_assertions'].append({'id':'deliberate_failure','check':'normalized_weights','expected':False})
             source.write_text(json.dumps(config))
             command=[sys.executable,str(ROOT/'run_experiment.py'),'run','--experiments',str(root/'experiments'),'--scenario','S06','--output',str(root/'outputs')]
-            result=subprocess.run(command,cwd=root,capture_output=True,text=True)
+            result=subprocess.run(command,cwd=root,capture_output=True,text=True,env=server.env)
             self.assertEqual(result.returncode,1,result.stderr)
             manifest=json.loads(next((root/'outputs').glob('*/manifest.json')).read_text())
             self.assertEqual([e['status'] for e in manifest['runs']],['failed','blocked'])

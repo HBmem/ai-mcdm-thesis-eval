@@ -223,3 +223,6 @@ __marimo__/
 .streamlit/secrets.toml
 # Generated immutable experiment batches
 /results/
+
+# Old version of code
+old-src/
