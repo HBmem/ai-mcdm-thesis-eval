@@ -48,7 +48,10 @@ def validate_matrix(matrix):
         raise ValueError("AHP matrix must be finite, positive, reciprocal, with unit diagonal.")
     return a
 
+# ============================================================
 # WEIGHTING METHODS
+# ============================================================
+
 
 def ahp(matrix, wd="mean", threshold=0.10):
     """Compute AHP weights and consistency diagnostics for a pairwise matrix."""
@@ -77,8 +80,11 @@ def ahp(matrix, wd="mean", threshold=0.10):
         "threshold": threshold, "ri": RI[len(a)],
         "consistency_convention": "principal_eigenvalue" if method == "max_eigen" else "mean_component_ratio"
     }
-        
+
+# ============================================================        
 # RANKING METHODS
+# ============================================================
+
 
 def topsis(alternatives, criteria, weights):
     """Rank alternatives using the TOPSIS method for weighted benefit/cost criteria."""
@@ -137,7 +143,10 @@ def topsis(alternatives, criteria, weights):
         "tie_tolerance": TIE_ATOL
     }
 
+# ============================================================
 # EVALUATION
+# ============================================================
+
 
 def preferences(inputs):
     """Aggregate participant and group judgments into a session-level preference model."""

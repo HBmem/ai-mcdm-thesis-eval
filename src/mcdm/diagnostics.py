@@ -7,8 +7,7 @@ import numpy as np
 from src.mcdm.reference import compare, evaluate, topsis
 
 def ranking(inputs, weights):
-    """
-    """
+    """Compute a TOPSIS ranking for the current alternatives using the supplied criterion weights."""
     cids = [c["id"] for c in inputs["criteria"]]
     values = np.array([weights[c] for c in cids], dtype=float)
     return {
@@ -17,13 +16,11 @@ def ranking(inputs, weights):
     }
 
 def delta(current, baseline):
-    """
-    """
+    """Compare a current ranking against a baseline and summarize rank, winner, and score deltas."""
     return compare(current, baseline)
 
 def robustness(inputs, baseline):
-    """
-    """
+    """Stress-test a baseline run by perturbing weights and removing criteria to assess sensitivity."""
     rows = []
     weights = baseline["applied_weights"]
 
@@ -54,7 +51,7 @@ def robustness(inputs, baseline):
     return rows
 
 def compute_diagnostics(inputs, trace):
-    """Use original preference dimensions and current ranking dimensions separately."""
+    """Build detailed group-level, cross-group, and session-level diagnostics from a decision trace."""
     pref = trace["preferences"]
     cids = pref["criterion_ids"]
     active = [c["id"] for c in inputs["criteria"]]
@@ -118,23 +115,22 @@ def compute_diagnostics(inputs, trace):
 
 
 def diagnostic_summaries(diagnostics):
-    """Compact task context; retain every tested condition and minority outcome.
-
-    Full comparison vectors remain in the authoritative registry and saved diagnostics.
-    Nonzero rank deltas, tie transitions, winner sets, correlations and the largest
-    score movement are preserved per case; numerical zero entries are not repeated.
-    """
+    """Condense detailed diagnostic evidence into compact summaries while preserving key changes."""
     def compact_comparison(comparison):
+        """Reduce a full comparison result to the fields most relevant for human-readable summaries."""
         fields = ("spearman_rho", "kendall_tau_b", "undefined_reason", "winner_changed",
                   "previous_winners", "current_winners", "reversals", "tie_transitions")
         return {**{key: comparison[key] for key in fields},
                 "nonzero_rank_deltas": {key: value for key, value in comparison["rank_deltas"].items() if value != 0},
                 "maximum_absolute_score_delta": max((abs(v) for v in comparison["score_deltas"].values()), default=0.)}
+    
     def cases(rows):
+        """Convert raw diagnostic rows into compact summary entries while preserving notable comparisons."""
         return [{**{key: value for key, value in row.items() if key not in {"comparison", "weights"}},
                  **({"comparison": compact_comparison(row["comparison"])} if "comparison" in row else {})}
                 for row in rows]
     def agreement(rows):
+        """Summarize the distribution of pairwise agreement statistics across a set of comparisons."""
         # Preserve all correlation values and their multiplicities, including undefined cases.
         distribution = {}
         for row in rows:
@@ -144,6 +140,7 @@ def diagnostic_summaries(diagnostics):
             {"spearman_rho": key[0], "kendall_tau_b": key[1], "undefined_reason": key[2], "pair_count": count}
             for key, count in distribution.items()]}
     def robustness_findings(rows):
+        """Highlight the evaluated perturbation cases and the subset that changed winners or rankings."""
         evaluated = [row for row in rows if "comparison" in row]
         def condition(row):
             return {key: row[key] for key in ("operation", "criterion_id", "factor", "status", "reason") if key in row}
