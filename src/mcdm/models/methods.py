@@ -2,7 +2,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.mcdm.enums import RankingMethod, WeightingMethod
+from src.mcdm.enums import RankingMethod, WeightingMethod, MeanMethod, GroupPowerMethod, EmptyGroupPolicy, OnExceedancePolicy
 
 
 @dataclass
@@ -19,3 +19,17 @@ class RankingMethodConfig:
 
     method: RankingMethod
     parameters: dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class AggregationMethodConfig:
+    """Method selection and method-specific options for session aggregation."""
+    within_group: MeanMethod
+    between_groups: MeanMethod
+    group_power_normalization: GroupPowerMethod
+    empty_group_policy: EmptyGroupPolicy
+
+@dataclass
+class ConsistencyMethodConfig:
+    """Method """
+    threshold: float
+    on_exceedance: OnExceedancePolicy

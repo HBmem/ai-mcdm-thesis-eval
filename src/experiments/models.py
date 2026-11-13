@@ -4,7 +4,7 @@ from typing import Any
 
 from src.mcdm.enums import PairwisePreference
 from src.mcdm.models.domain import StakeholderGroup
-from src.mcdm.models.methods import RankingMethodConfig, WeightingMethodConfig
+from src.mcdm.models.methods import RankingMethodConfig, WeightingMethodConfig, AggregationMethodConfig, ConsistencyMethodConfig
 from src.mcdm.models.session import DecisionSession
 
 @dataclass
@@ -40,6 +40,20 @@ class ExperimentResources:
 class ExperimentProcess:
     weighting_method: WeightingMethodConfig
     ranking_method: RankingMethodConfig
+    aggregation_method: AggregationMethodConfig
+    consistency_method: ConsistencyMethodConfig
+
+@dataclass
+class AIConfig:
+    enabled: bool
+
+@dataclass
+class ExperimentDefaults:
+    pipeline: str
+    seed: int
+    repetition: int
+    processing: ExperimentProcess
+    ai: AIConfig
 
 @dataclass
 class AddedAlternative:

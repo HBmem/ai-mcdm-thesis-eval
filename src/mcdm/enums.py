@@ -2,28 +2,44 @@
 from enum import Enum
 
 class WeightingMethod(str, Enum):
-    """
-    Available methods for weighting criteria.
-    """
+    """Available methods for weighting criteria."""
 
     AHP = "ahp"
     FUZZY_AHP = "fuzzy_ahp"
 
 class RankingMethod(str, Enum):
-    """
-    Available methods for ranking alternatives.
-    """
+    """Available methods for ranking alternatives."""
 
     TOPSIS = "topsis"
     FUZZY_TOPSIS = "fuzzy_topsis"
 
 class CriterionDirection(str, Enum):
-    """
-    Indicates whether higher or lower values are preferred for a criterion.
-    """
+    """Indicates whether higher or lower values are preferred for a criterion."""
 
     MAXIMIZE = "max"
     MINIMIZE = "min"
+
+class MeanMethod(str, Enum):
+    """Supported aggregation strategies for deriving criterion weights from pairwise judgments."""
+
+    MEAN = "mean"
+    GEOMETRIC_MEAN = "geometric_mean"
+    WEIGHTED_GEOMETRIC_MEAN = "weighted_geometric_mean"
+
+class GroupPowerMethod(str, Enum):
+    """How stakeholder group influence is translated into weighting during aggregation."""
+
+    REPRESENTED_GROUPS = "represented_groups"
+
+class EmptyGroupPolicy(str, Enum):
+    """Behavior for stakeholder groups that have no contributing participants in the session."""
+
+    INCLUDED = "included"
+    EXCLUDED = "excluded"
+
+class OnExceedancePolicy(str, Enum):
+    """"""
+    RETAIN_AND_FLAG = "retain_and_flag"
 
 class PairwisePreference(str, Enum):
     """
@@ -58,4 +74,3 @@ class PairwisePreference(str, Enum):
             PairwisePreference.EXTREME_IMPORTANCE: 9.0,
         }
         return mapping[self]
-    
