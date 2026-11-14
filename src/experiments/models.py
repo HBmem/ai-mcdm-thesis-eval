@@ -107,6 +107,7 @@ class Experiment:
     schema_version: str
     id: str
     name: str
+    research_description: str
     research_purpose: str
     scenario_id: str
     scenario_description: str
@@ -122,13 +123,19 @@ class Experiment:
     expected_assertions: list[dict[str, Any]] = field(default_factory=list)
     ai_evaluation: dict[str, Any] = field(default_factory=dict)
     output: dict[str, Any] = field(default_factory=dict)
+    defaults: ExperimentDefaults | None = None
+    case_metadata: dict[str, Any] = field(default_factory=dict)
+    baseline_case: str | None = None
+    comparisons: list[dict[str, Any]] = field(default_factory=list)
+    judgment_encoding: str = "pairwise_preference"
+    scale_conversion: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Return independent JSON-compatible data, including the domain session."""
         return _to_plain(self)
 
 def _to_plain(value: Any) -> Any:
-    if isinstance(value, (DecisionSession, StakeholderGroup, ExecutionVariation)):
+    if isinstance(value, (DecisionSession, StakeholderGroup)):
         return value.model_dump(mode="json")
     if isinstance(value, Enum):
         return value.value

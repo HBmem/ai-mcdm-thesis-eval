@@ -48,7 +48,7 @@
     }
   },
   "stakeholders": {
-    "judgment_encoding": "saaty_ratio",
+    "judgment_encoding": "pairwise_preference",
     "stakeholder_groups": [
       {
         "id": "community_residents",
@@ -87,66 +87,113 @@
           "participant_id": "community_residents_p01",
           "group_id": "community_residents",
           "judgments": {
-            "q1": 1.0,
-            "q2": 1.0,
-            "q3": 1.0,
-            "q4": 1.0,
-            "q5": 1.0,
-            "q6": 1.0
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
           }
         },
         {
           "participant_id": "transportation_department_p01",
           "group_id": "transportation_department",
           "judgments": {
-            "q1": 1.0,
-            "q2": 1.0,
-            "q3": 1.0,
-            "q4": 1.0,
-            "q5": 1.0,
-            "q6": 1.0
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
           }
         },
         {
           "participant_id": "city_government_p01",
           "group_id": "city_government",
           "judgments": {
-            "q1": 1.0,
-            "q2": 1.0,
-            "q3": 1.0,
-            "q4": 1.0,
-            "q5": 1.0,
-            "q6": 1.0
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
           }
         },
         {
           "participant_id": "environmental_advocates_p01",
           "group_id": "environmental_advocates",
           "judgments": {
-            "q1": 1.0,
-            "q2": 1.0,
-            "q3": 1.0,
-            "q4": 1.0,
-            "q5": 1.0,
-            "q6": 1.0
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
           }
         },
         {
           "participant_id": "business_community_p01",
           "group_id": "business_community",
           "judgments": {
-            "q1": 1.0,
-            "q2": 1.0,
-            "q3": 1.0,
-            "q4": 1.0,
-            "q5": 1.0,
-            "q6": 1.0
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
           }
         }
       ],
       "generators": [],
       "combine": "append",
       "on_id_collision": "error"
+    },
+    "scale_conversion": {
+      "from_encoding": "saaty_ratio",
+      "method": "nearest_log_distance",
+      "tie_break": "closest_to_equal_importance",
+      "original_judgments": {
+        "community_residents_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        },
+        "transportation_department_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        },
+        "city_government_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        },
+        "environmental_advocates_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        },
+        "business_community_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      }
     }
   },
   "baseline": {
