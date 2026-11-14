@@ -13,7 +13,7 @@ from openai import APIConnectionError, APITimeoutError, APIStatusError
 import run_experiment
 from dcl_fakes import CONFIG
 from src.comprehension import AIConfig, DEFAULT_ENV_FILE
-from src.preflight import PREFLIGHT_MESSAGES, PreflightError, check_model_access
+from src.preflight import EXIT_PAYMENT_REQUIRED, PREFLIGHT_MESSAGES, PreflightError, check_model_access
 from src.results import BatchStore
 
 
@@ -93,14 +93,17 @@ class PreflightTests(unittest.TestCase):
                 client.chat.completions.create.assert_called_once()
 
     def test_status_errors_are_classified_without_secret_leakage(self):
-        for status in (400,401,403,404,405,422,408,429,500,503):
+        for status in (400,401,402,403,404,405,422,408,429,500,503):
             with self.subTest(status=status):
                 client=probe_client()
                 client.chat.completions.create.side_effect=APIStatusError(CONFIG.api_key,
                     response=httpx.Response(status,request=httpx.Request('POST','https://example.test')),
                     body={'api_key':CONFIG.api_key})
                 with self.assertRaises(PreflightError) as caught: check_model_access(CONFIG,client)
-                self.assertEqual(caught.exception.exit_code,2 if status in (400,401,403,404,405,422) else 1)
+                expected_code = EXIT_PAYMENT_REQUIRED if status == 402 else 2 if status in (400,401,403,404,405,422) else 1
+                self.assertEqual(caught.exception.exit_code,expected_code)
+                if status == 402:
+                    self.assertIn("billing", str(caught.exception))
                 self.assertNotIn(CONFIG.api_key,str(caught.exception))
                 client.chat.completions.create.assert_called_once()
 
