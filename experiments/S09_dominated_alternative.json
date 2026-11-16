@@ -1,0 +1,463 @@
+{
+  "schema_version": "3.0",
+  "experiment_id": "S09",
+  "name": "Dominated Alternative",
+  "description": "Add a synthetic alternative dominated by A4, then remove it and compare the restored experiment with S01.",
+  "purpose": "Measure alternative-set sensitivity and verify restoration while preserving participant, group, and session criterion weights.",
+  "scenario": {
+    "id": "transportation_prioritization",
+    "description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
+    "policy_question": "How should a municipal government prioritize transportation improvement initiatives when balancing implementation costs, public accessibility, environmental benefits, and implementation time?"
+  },
+  "resources": {
+    "criteria": "../criteria/transport_v1.json",
+    "alternatives": "../alternative/transport_core_v1.json",
+    "dataset": "../datasets/transport_core_v1.csv",
+    "dataset_join_key": "alternative_id"
+  },
+  "defaults": {
+    "pipeline": "mcdm",
+    "seed": 123456,
+    "repetitions": 1,
+    "processing": {
+      "weighting": {
+        "method": "ahp",
+        "parameters": {
+          "derivation": "mean"
+        }
+      },
+      "ranking": {
+        "method": "topsis",
+        "parameters": {
+          "normalization": "vector"
+        }
+      },
+      "aggregation": {
+        "within_group": "geometric_mean",
+        "between_groups": "weighted_geometric_mean",
+        "group_power_normalization": "represented_groups",
+        "empty_group_policy": "exclude"
+      },
+      "consistency": {
+        "threshold": 0.1,
+        "on_exceedance": "retain_and_flag"
+      }
+    },
+    "ai": {
+      "enabled": false
+    }
+  },
+  "stakeholders": {
+    "judgment_encoding": "pairwise_preference",
+    "stakeholder_groups": [
+      {
+        "id": "community_residents",
+        "name": "Community Residents",
+        "description": "Residents who use or are affected by the city transportation network.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "transportation_department",
+        "name": "Transportation Department",
+        "description": "City staff responsible for transportation planning, operations, and infrastructure.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "city_government",
+        "name": "City Government",
+        "description": "Elected officials and municipal leadership responsible for citywide policy and resource decisions.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "environmental_advocates",
+        "name": "Environmental Advocates",
+        "description": "Advocates focused on environmental impacts and sustainable transportation.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "business_community",
+        "name": "Business Community",
+        "description": "Local businesses and business organizations affected by transportation access and investment.",
+        "voting_power": 0.2
+      }
+    ],
+    "participants": {
+      "predefined": [
+        {
+          "participant_id": "community_residents_p01",
+          "group_id": "community_residents",
+          "judgments": {
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
+          }
+        },
+        {
+          "participant_id": "transportation_department_p01",
+          "group_id": "transportation_department",
+          "judgments": {
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
+          }
+        },
+        {
+          "participant_id": "city_government_p01",
+          "group_id": "city_government",
+          "judgments": {
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
+          }
+        },
+        {
+          "participant_id": "environmental_advocates_p01",
+          "group_id": "environmental_advocates",
+          "judgments": {
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
+          }
+        },
+        {
+          "participant_id": "business_community_p01",
+          "group_id": "business_community",
+          "judgments": {
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
+          }
+        }
+      ],
+      "generators": [],
+      "combine": "append",
+      "on_id_collision": "error"
+    },
+    "scale_conversion": {
+      "from_encoding": "saaty_ratio",
+      "method": "nearest_log_distance",
+      "tie_break": "closest_to_equal_importance",
+      "original_judgments": {
+        "community_residents_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        },
+        "transportation_department_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        },
+        "city_government_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        },
+        "environmental_advocates_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        },
+        "business_community_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      }
+    }
+  },
+  "baseline": {
+    "case": "S01/control"
+  },
+  "assertions": [
+    {
+      "id": "weights_normalized",
+      "check": "normalized_weights",
+      "stage": "calculation",
+      "parameters": {},
+      "expected": true,
+      "severity": "error",
+      "atol": 1e-10,
+      "rtol": 0
+    },
+    {
+      "id": "scores_bounded",
+      "check": "bounded_topsis_scores",
+      "stage": "calculation",
+      "parameters": {},
+      "expected": true,
+      "severity": "error"
+    },
+    {
+      "id": "valid_judgment_ratios",
+      "check": "submitted_values_in_saaty_domain",
+      "stage": "calculation",
+      "parameters": {},
+      "expected": true,
+      "severity": "error"
+    },
+    {
+      "id": "reciprocal_matrices",
+      "check": "reciprocal_matrices",
+      "stage": "calculation",
+      "parameters": {},
+      "expected": true,
+      "severity": "error",
+      "atol": 1e-10,
+      "rtol": 0
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "add_dominated",
+      "name": "Add dominated alternative",
+      "description": "Add A6 with the legacy performance values, which are strictly dominated by A4 on all four criteria.",
+      "purpose": "Observe the effect of adding a dominated option under fixed preferences.",
+      "hypothesis": "A6 scores no better than A4 and all scopes preserve baseline weights. Rankings among existing options may change.",
+      "legacy_variant_id": "S09_ADD",
+      "result_dependencies": [
+        "S01/control"
+      ],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "add_alternatives",
+          "alternatives": [
+            {
+              "id": "A6",
+              "name": "Inefficient Infrastructure Program",
+              "values": {
+                "C1": 9.0,
+                "C2": 40.0,
+                "C3": 30.0,
+                "C4": 30.0
+              }
+            }
+          ]
+        }
+      ],
+      "reuse": {
+        "criterion_weights": {
+          "reference": "S01/control",
+          "scopes": [
+            "participant",
+            "group",
+            "session"
+          ],
+          "criterion_alignment": "require_identical_ids"
+        }
+      },
+      "comparisons": [
+        {
+          "id": "against_original_alternatives",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "common_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12,
+          "rerank_common_alternatives": true
+        }
+      ],
+      "assertions": [
+        {
+          "id": "dominated_score_not_better",
+          "check": "alternative_score_not_greater",
+          "stage": "calculation",
+          "parameters": {
+            "alternative": "A6",
+            "reference_alternative": "A4"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "criterion_weights_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant",
+              "group",
+              "session"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ]
+    },
+    {
+      "case_id": "remove_dominated",
+      "name": "Remove dominated alternative",
+      "description": "Inherit the resolved alternative set from S09/add_dominated, remove A6, and retain its weights at every scope.",
+      "purpose": "Verify that undoing the alternative addition restores the original numerical results.",
+      "hypothesis": "Alternative IDs, criterion weights, TOPSIS scores, and winner sets return to S01 values within numerical tolerance.",
+      "legacy_variant_id": "S09_REMOVE",
+      "result_dependencies": [
+        "S09/add_dominated"
+      ],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "inherit_alternatives",
+          "reference": "S09/add_dominated"
+        },
+        {
+          "type": "remove_alternatives",
+          "alternative_ids": [
+            "A6"
+          ]
+        }
+      ],
+      "reuse": {
+        "criterion_weights": {
+          "reference": "S09/add_dominated",
+          "scopes": [
+            "participant",
+            "group",
+            "session"
+          ],
+          "criterion_alignment": "require_identical_ids"
+        }
+      },
+      "comparisons": [
+        {
+          "id": "against_original_baseline",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "alternatives_restored",
+          "check": "alternative_ids_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error"
+        },
+        {
+          "id": "criterion_weights_restored",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant",
+              "group",
+              "session"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "scores_restored",
+          "check": "scoped_scores_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant",
+              "group",
+              "session"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "session_scores_restored",
+          "check": "scores_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "winner_set_restored",
+          "check": "winner_sets_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error"
+        }
+      ]
+    }
+  ],
+  "output": {
+    "directory": "../results",
+    "save_resolved_inputs": true,
+    "save_generated_participants": true,
+    "save_intermediate_matrices": true,
+    "save_per_participant_results": true,
+    "save_per_group_results": true,
+    "save_topsis_details": true,
+    "save_comparisons": true,
+    "save_assertion_results": true,
+    "save_provenance": true,
+    "save_ai_calls": false
+  }
+}

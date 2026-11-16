@@ -1,0 +1,2299 @@
+{
+  "schema_version": "3.0",
+  "experiment_id": "S08",
+  "name": "Criterion Weight Perturbation",
+  "description": "Twenty explicit session-weight settings independently perturb each criterion while keeping other weights equal and preserving original participant and group preference calculations.",
+  "purpose": "Measure session-ranking sensitivity across a fixed weight grid; adjacent comparisons bound observed winner changes without claiming exact transition thresholds.",
+  "scenario": {
+    "id": "transportation_prioritization",
+    "description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
+    "policy_question": "How should a municipal government prioritize transportation improvement initiatives when balancing implementation costs, public accessibility, environmental benefits, and implementation time?"
+  },
+  "resources": {
+    "criteria": "../criteria/transport_v1.json",
+    "alternatives": "../alternative/transport_core_v1.json",
+    "dataset": "../datasets/transport_core_v1.csv",
+    "dataset_join_key": "alternative_id"
+  },
+  "defaults": {
+    "pipeline": "mcdm",
+    "seed": 123456,
+    "repetitions": 1,
+    "processing": {
+      "weighting": {
+        "method": "ahp",
+        "parameters": {
+          "derivation": "mean"
+        }
+      },
+      "ranking": {
+        "method": "topsis",
+        "parameters": {
+          "normalization": "vector"
+        }
+      },
+      "aggregation": {
+        "within_group": "geometric_mean",
+        "between_groups": "weighted_geometric_mean",
+        "group_power_normalization": "represented_groups",
+        "empty_group_policy": "exclude"
+      },
+      "consistency": {
+        "threshold": 0.1,
+        "on_exceedance": "retain_and_flag"
+      }
+    },
+    "ai": {
+      "enabled": false
+    }
+  },
+  "stakeholders": {
+    "judgment_encoding": "pairwise_preference",
+    "stakeholder_groups": [
+      {
+        "id": "community_residents",
+        "name": "Community Residents",
+        "description": "Residents who use or are affected by the city transportation network.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "transportation_department",
+        "name": "Transportation Department",
+        "description": "City staff responsible for transportation planning, operations, and infrastructure.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "city_government",
+        "name": "City Government",
+        "description": "Elected officials and municipal leadership responsible for citywide policy and resource decisions.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "environmental_advocates",
+        "name": "Environmental Advocates",
+        "description": "Advocates focused on environmental impacts and sustainable transportation.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "business_community",
+        "name": "Business Community",
+        "description": "Local businesses and business organizations affected by transportation access and investment.",
+        "voting_power": 0.2
+      }
+    ],
+    "participants": {
+      "predefined": [
+        {
+          "participant_id": "community_residents_p01",
+          "group_id": "community_residents",
+          "judgments": {
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
+          }
+        },
+        {
+          "participant_id": "transportation_department_p01",
+          "group_id": "transportation_department",
+          "judgments": {
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
+          }
+        },
+        {
+          "participant_id": "city_government_p01",
+          "group_id": "city_government",
+          "judgments": {
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
+          }
+        },
+        {
+          "participant_id": "environmental_advocates_p01",
+          "group_id": "environmental_advocates",
+          "judgments": {
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
+          }
+        },
+        {
+          "participant_id": "business_community_p01",
+          "group_id": "business_community",
+          "judgments": {
+            "q1": 0,
+            "q2": 0,
+            "q3": 0,
+            "q4": 0,
+            "q5": 0,
+            "q6": 0
+          }
+        }
+      ],
+      "generators": [],
+      "combine": "append",
+      "on_id_collision": "error"
+    },
+    "scale_conversion": {
+      "from_encoding": "saaty_ratio",
+      "method": "nearest_log_distance",
+      "tie_break": "closest_to_equal_importance",
+      "original_judgments": {
+        "community_residents_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        },
+        "transportation_department_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        },
+        "city_government_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        },
+        "environmental_advocates_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        },
+        "business_community_p01": {
+          "q1": 1.0,
+          "q2": 1.0,
+          "q3": 1.0,
+          "q4": 1.0,
+          "q5": 1.0,
+          "q6": 1.0
+        }
+      }
+    }
+  },
+  "baseline": {
+    "case": "S01/control"
+  },
+  "assertions": [
+    {
+      "id": "weights_normalized",
+      "check": "normalized_weights",
+      "stage": "calculation",
+      "parameters": {},
+      "expected": true,
+      "severity": "error",
+      "atol": 1e-10,
+      "rtol": 0
+    },
+    {
+      "id": "scores_bounded",
+      "check": "bounded_topsis_scores",
+      "stage": "calculation",
+      "parameters": {},
+      "expected": true,
+      "severity": "error"
+    },
+    {
+      "id": "valid_judgment_ratios",
+      "check": "submitted_values_in_saaty_domain",
+      "stage": "calculation",
+      "parameters": {},
+      "expected": true,
+      "severity": "error"
+    },
+    {
+      "id": "reciprocal_matrices",
+      "check": "reciprocal_matrices",
+      "stage": "calculation",
+      "parameters": {},
+      "expected": true,
+      "severity": "error",
+      "atol": 1e-10,
+      "rtol": 0
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "c1_w025",
+      "name": "C1 weight 0.25",
+      "description": "Apply session ranking weight 0.25 to C1 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C1_W0",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.25,
+            "C2": 0.25,
+            "C3": 0.25,
+            "C4": 0.25
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.25,
+              "C2": 0.25,
+              "C3": 0.25,
+              "C4": 0.25
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C1",
+        "weight": 0.25
+      }
+    },
+    {
+      "case_id": "c1_w040",
+      "name": "C1 weight 0.40",
+      "description": "Apply session ranking weight 0.40 to C1 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C1_W1",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.4,
+            "C2": 0.2,
+            "C3": 0.2,
+            "C4": 0.2
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c1_w025",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.4,
+              "C2": 0.2,
+              "C3": 0.2,
+              "C4": 0.2
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C1",
+        "weight": 0.4
+      }
+    },
+    {
+      "case_id": "c1_w055",
+      "name": "C1 weight 0.55",
+      "description": "Apply session ranking weight 0.55 to C1 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C1_W2",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.55,
+            "C2": 0.15,
+            "C3": 0.15,
+            "C4": 0.15
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c1_w040",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.55,
+              "C2": 0.15,
+              "C3": 0.15,
+              "C4": 0.15
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C1",
+        "weight": 0.55
+      }
+    },
+    {
+      "case_id": "c1_w070",
+      "name": "C1 weight 0.70",
+      "description": "Apply session ranking weight 0.70 to C1 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C1_W3",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.7,
+            "C2": 0.1,
+            "C3": 0.1,
+            "C4": 0.1
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c1_w055",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.7,
+              "C2": 0.1,
+              "C3": 0.1,
+              "C4": 0.1
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C1",
+        "weight": 0.7
+      }
+    },
+    {
+      "case_id": "c1_w085",
+      "name": "C1 weight 0.85",
+      "description": "Apply session ranking weight 0.85 to C1 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C1_W4",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.85,
+            "C2": 0.05,
+            "C3": 0.05,
+            "C4": 0.05
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c1_w070",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.85,
+              "C2": 0.05,
+              "C3": 0.05,
+              "C4": 0.05
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C1",
+        "weight": 0.85
+      }
+    },
+    {
+      "case_id": "c2_w025",
+      "name": "C2 weight 0.25",
+      "description": "Apply session ranking weight 0.25 to C2 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C2_W0",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.25,
+            "C2": 0.25,
+            "C3": 0.25,
+            "C4": 0.25
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.25,
+              "C2": 0.25,
+              "C3": 0.25,
+              "C4": 0.25
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C2",
+        "weight": 0.25
+      }
+    },
+    {
+      "case_id": "c2_w040",
+      "name": "C2 weight 0.40",
+      "description": "Apply session ranking weight 0.40 to C2 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C2_W1",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.2,
+            "C2": 0.4,
+            "C3": 0.2,
+            "C4": 0.2
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c2_w025",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.2,
+              "C2": 0.4,
+              "C3": 0.2,
+              "C4": 0.2
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C2",
+        "weight": 0.4
+      }
+    },
+    {
+      "case_id": "c2_w055",
+      "name": "C2 weight 0.55",
+      "description": "Apply session ranking weight 0.55 to C2 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C2_W2",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.15,
+            "C2": 0.55,
+            "C3": 0.15,
+            "C4": 0.15
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c2_w040",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.15,
+              "C2": 0.55,
+              "C3": 0.15,
+              "C4": 0.15
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C2",
+        "weight": 0.55
+      }
+    },
+    {
+      "case_id": "c2_w070",
+      "name": "C2 weight 0.70",
+      "description": "Apply session ranking weight 0.70 to C2 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C2_W3",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.1,
+            "C2": 0.7,
+            "C3": 0.1,
+            "C4": 0.1
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c2_w055",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.1,
+              "C2": 0.7,
+              "C3": 0.1,
+              "C4": 0.1
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C2",
+        "weight": 0.7
+      }
+    },
+    {
+      "case_id": "c2_w085",
+      "name": "C2 weight 0.85",
+      "description": "Apply session ranking weight 0.85 to C2 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C2_W4",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.05,
+            "C2": 0.85,
+            "C3": 0.05,
+            "C4": 0.05
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c2_w070",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.05,
+              "C2": 0.85,
+              "C3": 0.05,
+              "C4": 0.05
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C2",
+        "weight": 0.85
+      }
+    },
+    {
+      "case_id": "c3_w025",
+      "name": "C3 weight 0.25",
+      "description": "Apply session ranking weight 0.25 to C3 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C3_W0",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.25,
+            "C2": 0.25,
+            "C3": 0.25,
+            "C4": 0.25
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.25,
+              "C2": 0.25,
+              "C3": 0.25,
+              "C4": 0.25
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C3",
+        "weight": 0.25
+      }
+    },
+    {
+      "case_id": "c3_w040",
+      "name": "C3 weight 0.40",
+      "description": "Apply session ranking weight 0.40 to C3 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C3_W1",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.2,
+            "C2": 0.2,
+            "C3": 0.4,
+            "C4": 0.2
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c3_w025",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.2,
+              "C2": 0.2,
+              "C3": 0.4,
+              "C4": 0.2
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C3",
+        "weight": 0.4
+      }
+    },
+    {
+      "case_id": "c3_w055",
+      "name": "C3 weight 0.55",
+      "description": "Apply session ranking weight 0.55 to C3 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C3_W2",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.15,
+            "C2": 0.15,
+            "C3": 0.55,
+            "C4": 0.15
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c3_w040",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.15,
+              "C2": 0.15,
+              "C3": 0.55,
+              "C4": 0.15
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C3",
+        "weight": 0.55
+      }
+    },
+    {
+      "case_id": "c3_w070",
+      "name": "C3 weight 0.70",
+      "description": "Apply session ranking weight 0.70 to C3 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C3_W3",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.1,
+            "C2": 0.1,
+            "C3": 0.7,
+            "C4": 0.1
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c3_w055",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.1,
+              "C2": 0.1,
+              "C3": 0.7,
+              "C4": 0.1
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C3",
+        "weight": 0.7
+      }
+    },
+    {
+      "case_id": "c3_w085",
+      "name": "C3 weight 0.85",
+      "description": "Apply session ranking weight 0.85 to C3 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C3_W4",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.05,
+            "C2": 0.05,
+            "C3": 0.85,
+            "C4": 0.05
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c3_w070",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.05,
+              "C2": 0.05,
+              "C3": 0.85,
+              "C4": 0.05
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C3",
+        "weight": 0.85
+      }
+    },
+    {
+      "case_id": "c4_w025",
+      "name": "C4 weight 0.25",
+      "description": "Apply session ranking weight 0.25 to C4 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C4_W0",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.25,
+            "C2": 0.25,
+            "C3": 0.25,
+            "C4": 0.25
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.25,
+              "C2": 0.25,
+              "C3": 0.25,
+              "C4": 0.25
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C4",
+        "weight": 0.25
+      }
+    },
+    {
+      "case_id": "c4_w040",
+      "name": "C4 weight 0.40",
+      "description": "Apply session ranking weight 0.40 to C4 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C4_W1",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.2,
+            "C2": 0.2,
+            "C3": 0.2,
+            "C4": 0.4
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c4_w025",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.2,
+              "C2": 0.2,
+              "C3": 0.2,
+              "C4": 0.4
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C4",
+        "weight": 0.4
+      }
+    },
+    {
+      "case_id": "c4_w055",
+      "name": "C4 weight 0.55",
+      "description": "Apply session ranking weight 0.55 to C4 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C4_W2",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.15,
+            "C2": 0.15,
+            "C3": 0.15,
+            "C4": 0.55
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c4_w040",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.15,
+              "C2": 0.15,
+              "C3": 0.15,
+              "C4": 0.55
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C4",
+        "weight": 0.55
+      }
+    },
+    {
+      "case_id": "c4_w070",
+      "name": "C4 weight 0.70",
+      "description": "Apply session ranking weight 0.70 to C4 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C4_W3",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.1,
+            "C2": 0.1,
+            "C3": 0.1,
+            "C4": 0.7
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c4_w055",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.1,
+              "C2": 0.1,
+              "C3": 0.1,
+              "C4": 0.7
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C4",
+        "weight": 0.7
+      }
+    },
+    {
+      "case_id": "c4_w085",
+      "name": "C4 weight 0.85",
+      "description": "Apply session ranking weight 0.85 to C4 and split the remaining mass equally among the other three criteria.",
+      "purpose": "Measure the effect of a specified session criterion weight.",
+      "hypothesis": "Applied session weights match the specified map; participant and group preference weights remain unchanged. Rank reversals and winner changes are measured, not required.",
+      "legacy_variant_id": "S08_C4_W4",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [
+        {
+          "type": "set_criterion_weights",
+          "scopes": [
+            "session"
+          ],
+          "weights": {
+            "C1": 0.05,
+            "C2": 0.05,
+            "C3": 0.05,
+            "C4": 0.85
+          }
+        }
+      ],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S01/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_previous_weight",
+          "reference": "S08/c4_w070",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "explicit_session_weights",
+          "check": "session_weights_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_weights": {
+              "C1": 0.05,
+              "C2": 0.05,
+              "C3": 0.05,
+              "C4": 0.85
+            }
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "participant_preferences_preserved",
+          "check": "scoped_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S01/control",
+            "scopes": [
+              "participant"
+            ]
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        }
+      ],
+      "sensitivity": {
+        "criterion_id": "C4",
+        "weight": 0.85
+      }
+    }
+  ],
+  "output": {
+    "directory": "../results",
+    "save_resolved_inputs": true,
+    "save_generated_participants": true,
+    "save_intermediate_matrices": true,
+    "save_per_participant_results": true,
+    "save_per_group_results": true,
+    "save_topsis_details": true,
+    "save_comparisons": true,
+    "save_assertion_results": true,
+    "save_provenance": true,
+    "save_ai_calls": false
+  }
+}

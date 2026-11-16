@@ -19,7 +19,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from src.common.time import timestamp
 from src.experiments.assertions import validate_assertions
-from src.experiments.models import Experiment
+from src.experiments.models import Experiment, ReusedWeighting, ResolvedExecutionInputs
 from src.experiments.results import RunResult
 from src.mcdm.enums import (
     WeightingMethod, RankingMethod, MeanMethod, GroupPowerMethod,
@@ -39,6 +39,7 @@ ALLOWED_POLICIES = {
     "alternative_alignment": {"require_identical_ids", "common_ids"},
     "criterion_alignment": {"require_identical_ids"},
 }
+ALLOWED_SCOPES = {"participant", "group", "session"}
 
 def _hash(payload):
     return hashlib.sha256(payload).hexdigest()
@@ -60,7 +61,6 @@ class PreparedRun:
     requested: bool
     dependencies: tuple[str, ...]
     reference_runs: dict[str, str]
-
 
 def _case_key(experiment):
     key = experiment.variant_id or experiment.session.id
@@ -338,13 +338,40 @@ def calculate_entity(
     session,
     processing,
     metadata=None,
+    reused_weighting: ReusedWeighting | None = None,
 ) -> EntityCalculation:
-    weighting = MCDMService.generate_weights(
-        session=session,
-        pairwise_matrix=pairwise_matrix,
-        config=processing.weighting_method,
-        consistency=processing.consistency_method,
-    )
+    metadata = {} if metadata is None else dict(metadata)
+
+    if reused_weighting is None:
+        weighting = MCDMService.generate_weights(
+            session=session,
+            pairwise_matrix=pairwise_matrix,
+            config=processing.weighting_method,
+            consistency=processing.consistency_method,
+        )
+
+        metadata["weighting_source"] = "calculated"
+
+    else:
+        if (
+            pairwise_matrix.shape
+            != reused_weighting.pairwise_matrix.shape
+            or not np.allclose(
+                pairwise_matrix,
+                reused_weighting.pairwise_matrix,
+                atol=1e-12,
+                rtol=0,
+            )
+        ):
+            raise ValueError("Current preferences do not match the reused weights.")
+
+        weighting = reused_weighting.weighting.model_copy(deep=True)
+
+        metadata["weighting_source"] = {
+            "type": "reused",
+            "source_run_id": reused_weighting.source_run_id,
+            "source_case_key": reused_weighting.source_case_key,
+        }
 
     ranking = MCDMService.generate_ranking(
         session=session,
@@ -359,7 +386,7 @@ def calculate_entity(
         pairwise_matrix=pairwise_matrix.tolist(),
         weighting=weighting,
         ranking=ranking,
-        metadata={} if metadata is None else dict(metadata),
+        metadata=metadata,
     )
 
 def prepare_runs(
@@ -512,31 +539,445 @@ def prepare_runs(
             ))
     return runs
 
-def execute_run(run: PreparedRun):
-    experiment =  run.experiment
-    session = experiment.session
-    processing = experiment.processing
+def _build_reused_weighting(
+    calculation: EntityCalculation,
+    *,
+    source: RunResult,
+    source_criterion_ids: list[str],
+    target_criterion_ids: list[str],
+) -> ReusedWeighting:
+    # Align the stored source matrix with the target criterion order.
+    positions = {
+        criterion_id: index
+        for index, criterion_id in enumerate(source_criterion_ids)
+    }
 
-    result = RunResult(
-        experiment_id=experiment.id,
-        case_key=run.case_key,
-        name=experiment.name,
-        run_id=uuid4().hex,
-        variant_id=experiment.variant_id,
-        status="failed",
-        inputs=experiment.to_dict(),
-        execution={
-            "execution_key": run.key,
-            "repetition": run.repetition,
-            "seed": run.seed,
-            "reference_runs": dict(run.reference_runs),
-            "numerical_status": "pending",
-            "messages": [],
-        },
+    order = [
+        positions[criterion_id]
+        for criterion_id in target_criterion_ids
+    ]
+
+    matrix = np.asarray(
+        calculation.pairwise_matrix,
+        dtype=float,
     )
+
+    expected_shape = (
+        len(source_criterion_ids),
+        len(source_criterion_ids),
+    )
+
+    if (
+        matrix.shape != expected_shape
+        or not np.all(np.isfinite(matrix))
+    ):
+        raise ValueError(
+            f"Invalid source matrix for "
+            f"{calculation.scope}/{calculation.entity_id}."
+        )
+
+    matrix = matrix[np.ix_(order, order)].copy()
+
+    weighting = calculation.weighting.model_copy(deep=True)
+
+    weights_by_id = {
+        item.criterion_id: item
+        for item in weighting.criterion_weights
+    }
+
+    if (
+        len(weights_by_id) != len(weighting.criterion_weights)
+        or set(weights_by_id) != set(target_criterion_ids)
+    ):
+        raise ValueError(
+            f"Source weights do not cover the target criteria for "
+            f"{calculation.scope}/{calculation.entity_id}."
+        )
+
+    values = np.asarray([
+        weights_by_id[criterion_id].weight
+        for criterion_id in target_criterion_ids
+    ])
+
+    if (
+        not np.all(np.isfinite(values))
+        or np.any(values < 0)
+        or not np.isclose(
+            values.sum(),
+            1.0,
+            atol=1e-10,
+            rtol=0,
+        )
+    ):
+        raise ValueError(
+            f"Invalid source weights for "
+            f"{calculation.scope}/{calculation.entity_id}."
+        )
+
+    # Keep stored weights in target criterion order as well.
+    weighting.criterion_weights = [
+        weights_by_id[criterion_id].model_copy(deep=True)
+        for criterion_id in target_criterion_ids
+    ]
+
+    return ReusedWeighting(
+        weighting=weighting,
+        pairwise_matrix=matrix,
+        source_run_id=source.run_id,
+        source_case_key=source.case_key,
+    )
+
+def resolve_execution_inputs(
+    run: PreparedRun,
+    *,
+    dependency_results: dict[str, RunResult] | None = None,
+) -> ResolvedExecutionInputs:
+    dependencies = dependency_results or {}
+    experiment = deepcopy(run.experiment)
+
+    resolved = ResolvedExecutionInputs(
+        experiment=experiment,
+        metadata={"runtime_operations": []},
+    )
+
+    def get_dependency(reference):
+        if reference not in dependencies:
+            raise ValueError(
+                f"{run.key}: reference {reference!r} must be "
+                "a declared, supplied result dependency."
+            )
+
+        source = dependencies[reference]
+
+        if source.case_key != reference:
+            raise ValueError("Dependency reference identity mismatch.")
+
+        if not _dependency_is_ready(source):
+            raise ValueError(
+                f"Dependency {reference!r} has no usable calculations."
+            )
+
+        return source
+
+    # Resolve runtime operations in their declared order.
+    operations = experiment.case_metadata.get(
+        "runtime_operations", []
+    )
+
+    if not isinstance(operations, list):
+        raise ValueError("runtime_operations must be a list.")
+
+    for operation in operations:
+        if not isinstance(operation, dict):
+            raise ValueError("Each runtime operation must be an object.")
+
+        if operation.get("type") != "remove_winner":
+            raise NotImplementedError(
+                f"Runtime operation {operation.get('type')!r} "
+                "is not implemented."
+            )
+
+        if operation.get("tie_policy") != "remove_all_winners":
+            raise ValueError("Unsupported winner-removal tie policy.")
+
+        if operation.get("on_empty_alternatives") != "error":
+            raise ValueError("Unsupported empty-alternative policy.")
+
+        tolerance = operation.get("tie_atol", 1e-12)
+
+        if (
+            isinstance(tolerance, bool)
+            or not isinstance(tolerance, (int, float))
+            or not math.isfinite(tolerance)
+            or tolerance < 0
+        ):
+            raise ValueError("tie_atol must be finite and nonnegative.")
+
+        source = get_dependency(operation["reference"])
+        rankings = source.mcdm.session.ranking.rankings
+
+        if not rankings:
+            raise ValueError("Dependency has no session ranking.")
+
+        scores = [
+            item.closeness_coefficient
+            for item in rankings
+        ]
+
+        if not all(math.isfinite(score) for score in scores):
+            raise ValueError("Dependency ranking contains invalid scores.")
+
+        best_score = max(scores)
+
+        winner_ids = {
+            item.alternative_id
+            for item in rankings
+            if abs(item.closeness_coefficient - best_score)
+            <= tolerance
+        }
+
+        current_ids = {
+            alternative.id
+            for alternative in experiment.session.alternatives
+        }
+
+        # This initial handler implements the S06 design:
+        # start from the same alternative set as the reference.
+        reference_ids = {
+            alternative["id"]
+            for alternative in source.inputs["session"]["alternatives"]
+        }
+
+        if current_ids != reference_ids:
+            raise ValueError(
+                "remove_winner currently requires the same starting "
+                "alternative IDs as its reference."
+            )
+
+        remaining = [
+            alternative
+            for alternative in experiment.session.alternatives
+            if alternative.id not in winner_ids
+        ]
+
+        if not remaining:
+            raise ValueError(
+                "Removing the winner set would leave no alternatives."
+            )
+
+        experiment.session.alternatives = remaining
+
+        resolved.metadata["runtime_operations"].append({
+            "type": "remove_winner",
+            "reference": source.case_key,
+            "source_run_id": source.run_id,
+            "removed_alternative_ids": sorted(winner_ids),
+            "remaining_alternative_ids": [
+                alternative.id
+                for alternative in remaining
+            ],
+            "tie_atol": tolerance,
+        })
+
+    # Resolve requested artifact reuse.
+    reuse = experiment.case_metadata.get("reuse", {})
+
+    if not isinstance(reuse, dict):
+        raise ValueError("reuse must be an object.")
+
+    if set(reuse) - {"criterion_weights"}:
+        raise NotImplementedError("Unsupported reuse artifact.")
+
+    if "criterion_weights" not in reuse:
+        return resolved
+
+    rule = reuse["criterion_weights"]
+
+    if not isinstance(rule, dict):
+        raise ValueError("criterion_weights reuse must be an object.")
+
+    if set(rule) - {"reference", "criterion_alignment", "scopes"}:
+        raise ValueError("Unsupported criterion-weight reuse fields.")
+
+    scopes = rule.get("scopes", ["session"])
+
+    if (
+        not isinstance(scopes, list)
+        or not scopes
+        or any(
+            not isinstance(scope, str)
+            or scope not in ALLOWED_SCOPES
+            for scope in scopes
+        )
+    ):
+        raise ValueError("Reuse scopes must be a nonempty list containing participant, group, or session.")
+
+    if len(scopes) != len(set(scopes)):
+        raise ValueError("Reuse scopes must not contain duplicates.")
+
+    if rule.get("criterion_alignment") != "require_identical_ids":
+        raise ValueError("Unsupported criterion alignment policy.")
+
+    source = get_dependency(rule["reference"])
+
+    current_ids = [
+        criterion.id
+        for criterion in experiment.session.criteria
+    ]
+
+    source_ids = [
+        criterion["id"]
+        for criterion in source.inputs["session"]["criteria"]
+    ]
+
+    if (
+        len(source_ids) != len(set(source_ids))
+        or set(current_ids) != set(source_ids)
+    ):
+        raise ValueError(
+            "Reused weights require identical criterion IDs."
+        )
+
+    # Require unchanged weighting and consistency configurations.
+    current_processing = experiment.to_dict()["processing"]
+    source_processing = source.inputs["processing"]
+
+    for name in ("weighting_method", "consistency_method"):
+        if current_processing[name] != source_processing[name]:
+            raise ValueError(
+                f"Cannot reuse weights after changing {name}."
+            )
+
+    # Match criterion definitions by ID rather than list position.
+    current_criteria = {
+        item["id"]: item
+        for item in experiment.to_dict()["session"]["criteria"]
+    }
+
+    source_criteria = {
+        item["id"]: item
+        for item in source.inputs["session"]["criteria"]
+    }
+
+    if current_criteria != source_criteria:
+        raise ValueError(
+            "Cannot reuse weights after changing criterion definitions."
+        )
+
+    source_collections = {
+        "participant": source.mcdm.participants,
+        "group": source.mcdm.groups,
+    }
+
+    represented_groups = {
+        participant.stakeholder_group_id
+        for participant in experiment.session.participants
+    }
+
+    target_ids_by_scope = {
+        "participant": [
+            participant.id
+            for participant in experiment.session.participants
+        ],
+        "group": [
+            group.id
+            for group in experiment.session.stakeholder_groups
+            if group.id in represented_groups
+        ],
+    }
+
+    resolved.metadata["weight_reuse"] = []
+
+    for scope in scopes:
+        if scope == "session":
+            calculation = source.mcdm.session
+
+            if calculation is None:
+                raise ValueError(
+                    "Dependency is missing its session calculation."
+                )
+
+            if calculation.scope != "session":
+                raise ValueError(
+                    "Dependency has an invalid session calculation."
+                )
+
+            pairs = [
+                (
+                    experiment.session.id,
+                    calculation,
+                )
+            ]
+
+        else:
+            calculations = source_collections[scope]
+
+            source_by_id = {
+                calculation.entity_id: calculation
+                for calculation in calculations
+            }
+
+            if len(source_by_id) != len(calculations):
+                raise ValueError(
+                    f"Duplicate source {scope} calculation IDs."
+                )
+
+            if any(
+                calculation.scope != scope
+                for calculation in calculations
+            ):
+                raise ValueError(
+                    f"Incorrect scope in source {scope} calculations."
+                )
+
+            target_ids = target_ids_by_scope[scope]
+
+            if len(target_ids) != len(set(target_ids)):
+                raise ValueError(
+                    f"Duplicate target {scope} IDs."
+                )
+
+            # This initial policy requires exact entity matching.
+            if set(source_by_id) != set(target_ids):
+                raise ValueError(
+                    f"Full {scope} reuse requires identical "
+                    "source and target entity IDs."
+                )
+
+            pairs = [
+                (entity_id, source_by_id[entity_id])
+                for entity_id in target_ids
+            ]
+
+        for target_id, calculation in pairs:
+            key = (scope, target_id)
+
+            resolved.reused_weightings[key] = (
+                _build_reused_weighting(
+                    calculation,
+                    source=source,
+                    source_criterion_ids=source_ids,
+                    target_criterion_ids=current_ids,
+                )
+            )
+
+            resolved.metadata["weight_reuse"].append({
+                "scope": scope,
+                "target_entity_id": target_id,
+                "source_entity_id": calculation.entity_id,
+                "reference": source.case_key,
+                "source_run_id": source.run_id,
+            })
+
+    return resolved
+
+def execute_run(
+    run: PreparedRun,
+    *,
+    dependency_results: dict[str, RunResult] | None = None
+) -> RunResult:
+    # experiment =  run.experiment
+    # session = experiment.session
+    # processing = experiment.processing
+
+    result = _create_run_result(run)
 
     try:
         result.execution["numerical_status"] = "running"
+        result.execution["resolution_status"] = "running"
+
+        resolved = resolve_execution_inputs(
+            run,
+            dependency_results=dependency_results,
+        )
+
+        experiment = resolved.experiment
+        session = experiment.session
+        processing = experiment.processing
+
+        result.inputs = experiment.to_dict()
+        result.execution["input_resolution"] = resolved.metadata
+        result.execution["resolution_status"] = "completed"
 
         decision_matrix = MCDMService.create_decision_matrix(
             session
@@ -559,6 +1000,9 @@ def execute_run(run: PreparedRun):
                 metadata={
                     "group_id": participant.stakeholder_group_id,
                 },
+                reused_weighting=resolved.reused_weightings.get(
+                    ("participant", participant.id)
+                ),
             )
 
             result.mcdm.participants.append(calculation)
@@ -592,6 +1036,9 @@ def execute_run(run: PreparedRun):
                     "participant_count": len(members),
                     "voting_power": group.voting_power,
                 },
+                reused_weighting=resolved.reused_weightings.get(
+                    ("group", group.id)
+                ),
             )
 
             result.mcdm.groups.append(calculation)
@@ -609,6 +1056,9 @@ def execute_run(run: PreparedRun):
             decision_matrix=decision_matrix,
             session=session,
             processing=processing,
+            reused_weighting=resolved.reused_weightings.get(
+                ("session", session.id)
+            ),
         )
 
         result.set_status("calculated")
@@ -617,6 +1067,10 @@ def execute_run(run: PreparedRun):
     except Exception as error:
         result.set_status("failed")
         result.execution["numerical_status"] = "failed"
+
+        if result.execution.get("resolution_status") == "running":
+            result.execution["resolution_status"] = "failed"
+
         result.execution["messages"].append(
             f"{type(error).__name__}: {error}"
         )
@@ -676,7 +1130,21 @@ def execute_experiments(runs, output, *, ai_config=None, ai_client=None, preflig
                 "dependency results were unavailable."
             )
         else:
-            result = execute_run(run)
+            dependency_results = {
+                completed[key].case_key: completed[key]
+                for key in run.dependencies
+            }
+
+            if len(dependency_results) != len(run.dependencies):
+                raise ValueError(
+                    "Multiple dependencies resolve to the same case key."
+                )
+
+            result = execute_run(
+                run,
+                dependency_results=dependency_results,
+            )
+
             result.execution["dependency_status"] = "satisfied"
 
         result.execution["dependency_run_ids"] = {

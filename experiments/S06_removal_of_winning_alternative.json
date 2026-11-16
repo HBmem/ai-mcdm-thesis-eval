@@ -260,6 +260,7 @@
       "reuse": {
         "criterion_weights": {
           "reference": "S01/control",
+          "scopes": ["participant", "group", "session"],
           "criterion_alignment": "require_identical_ids"
         }
       },

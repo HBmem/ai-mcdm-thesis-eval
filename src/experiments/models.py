@@ -1,3 +1,5 @@
+import numpy as np
+
 from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from typing import Any, Literal
@@ -6,7 +8,7 @@ from src.mcdm.enums import PairwisePreference
 from src.mcdm.models.domain import StakeholderGroup
 from src.mcdm.models.methods import RankingMethodConfig, WeightingMethodConfig, AggregationMethodConfig, ConsistencyMethodConfig
 from src.mcdm.models.session import DecisionSession
-# from src.mcdm.models.computation import MCDMResult
+from src.mcdm.models.computation import WeightResult
 
 @dataclass
 class ExperimentParticipant:
@@ -152,3 +154,18 @@ def _to_plain(value: Any) -> Any:
     if isinstance(value, list):
         return [_to_plain(item) for item in value]
     return value
+
+@dataclass
+class ReusedWeighting:
+    weighting: WeightResult
+    pairwise_matrix: np.ndarray
+    source_run_id: str
+    source_case_key: str
+
+
+@dataclass
+class ResolvedExecutionInputs:
+    experiment: Experiment
+    reused_weightings: dict[tuple[str, str], ReusedWeighting] = field(default_factory=dict)
+    metadata: dict = field(default_factory=dict)
+    
