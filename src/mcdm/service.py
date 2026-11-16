@@ -17,9 +17,13 @@ from src.mcdm.enums import (
     EmptyGroupPolicy,
 )
 from src.mcdm.models.domain import Participant
-from src.mcdm.models.methods import RankingMethodConfig, WeightingMethodConfig, AggregationMethodConfig
+from src.mcdm.models.methods import RankingMethodConfig, WeightingMethodConfig, AggregationMethodConfig, ConsistencyMethodConfig
 from src.mcdm.models.session import DecisionSession
 from src.mcdm.models.computation import WeightResult, CriterionWeight, RankingResult, AlternativeRanking
+
+
+ROUNDOFF_TOLERANCE = 1e-12
+
 
 class MCDMService:
     """
@@ -319,6 +323,37 @@ class MCDMService:
         wd: Literal["mean", "m", "geometric", "g", "max_eigen", "me"] = "geometric",
     ) -> tuple[np.ndarray, float]:
         # Validate dimensions, reciprocity, positivity, and supported derivation.
+        try:
+            pairwise_matrix = np.asarray(pairwise_matrix, dtype=float)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("AHP pairwise matrix must contain numeric values.") from exc
+
+        if (
+            pairwise_matrix.ndim != 2
+            or pairwise_matrix.shape[0] != pairwise_matrix.shape[1]
+            or pairwise_matrix.shape[0] < 2
+        ):
+            raise ValueError("AHP pairwise matrix must be square and at least 2x2.")
+
+        if not np.all(np.isfinite(pairwise_matrix)):
+            raise ValueError("AHP pairwise matrix must contain only finite values.")
+
+        if np.any(pairwise_matrix <= 0):
+            raise ValueError("AHP pairwise matrix entries must be positive.")
+
+        if not np.allclose(
+            np.diag(pairwise_matrix), 1.0, rtol=0.0, atol=ROUNDOFF_TOLERANCE
+        ):
+            raise ValueError("AHP pairwise matrix diagonal entries must be 1.")
+
+        if not np.allclose(
+            np.log(pairwise_matrix) + np.log(pairwise_matrix.T),
+            0.0,
+            rtol=0.0,
+            atol=1e-9,
+        ):
+            raise ValueError("AHP pairwise matrix must be reciprocal.")
+
         supported_weight_derivations = {
             "mean",
             "m",
@@ -353,7 +388,28 @@ class MCDMService:
             wd=wd,
         )
 
-        return weights, consistency_ratio
+        # Some experiments result in a tiny negative consistency ratio from floating-point rounding.
+        # That are effectively zero, but WeightResult correctly requires consistency_ratio >= 0
+        # To resolve will normalize negligible negative values, before constructing WeightResult.
+        consistency_ratio = float(consistency_ratio)
+
+        if not np.isfinite(consistency_ratio):
+            raise ValueError(
+                "AHP returned a nonfinite consistency ratio."
+            )
+
+        # Numerical tolerance, separate from the inconsistency threshold.
+
+        if consistency_ratio < -ROUNDOFF_TOLERANCE:
+            raise ValueError(
+                "AHP returned a materially negative consistency ratio: "
+                f"{consistency_ratio!r}"
+            )
+
+        # Correct only negligible negative rounding noise.
+        consistency_ratio = max(0.0, consistency_ratio)
+
+        return np.asarray(weights, dtype=float), consistency_ratio
 
 # ============================================================
 # RANKING GENERATION
@@ -430,6 +486,7 @@ class MCDMService:
         session: DecisionSession,
         pairwise_matrix: np.ndarray,
         config: WeightingMethodConfig,
+        consistency: ConsistencyMethodConfig
     ) -> WeightResult:
         if config is None:
             raise ValueError("A weighting configuration is required.")
@@ -469,6 +526,7 @@ class MCDMService:
                 if consistency_ratio is None
                 else float(consistency_ratio)
             ),
+            consistency_threshold=consistency.threshold
         )
 
     @classmethod
@@ -574,17 +632,29 @@ class MCDMService:
             key=lambda index: (-float(scores[index]), index),
         )
 
-        return RankingResult(
-            rankings=[
+        rankings = []
+        previous_score = None
+        previous_rank = None
+
+        for position, index in enumerate(ordered_indices, start=1):
+            score = float(scores[index])
+            rank = (
+                previous_rank
+                if previous_score is not None and score == previous_score
+                else position
+            )
+            rankings.append(
                 AlternativeRanking(
                     alternative_id=session.alternatives[index].id,
                     alternative_name=session.alternatives[index].name,
-                    rank=position,
-                    closeness_coefficient=float(scores[index]),
+                    rank=rank,
+                    closeness_coefficient=score,
                 )
-                for position, index in enumerate(
-                    ordered_indices,
-                    start=1,
-                )
-            ]
+            )
+            previous_score = score
+            previous_rank = rank
+
+        return RankingResult(
+            rankings=rankings
         )
+    

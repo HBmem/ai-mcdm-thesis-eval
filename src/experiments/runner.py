@@ -32,6 +32,9 @@ from src.mcdm.reference import DERIVATIONS
 
 ROOT = Path(__file__).resolve().parent.parent
 
+VALID_WEIGHTING_METHODS = [WeightingMethod.AHP]
+VALID_RANKING_METHODS = [RankingMethod.TOPSIS]
+
 def _hash(payload):
     return hashlib.sha256(payload).hexdigest()
 
@@ -93,8 +96,10 @@ def _validate_case(experiment):
     if defaults.seed != experiment.execution.random_seed:
         raise ValueError("defaults.seed and execution.random_seed disagree.")
     process = experiment.processing
-    if process.weighting_method.method != WeightingMethod.AHP or process.ranking_method.method != RankingMethod.TOPSIS:
-        raise ValueError("Only AHP weighting and TOPSIS ranking are currently supported.")
+    if process.weighting_method.method not in VALID_WEIGHTING_METHODS:
+        raise ValueError("Unsupported weighting method.")
+    if process.ranking_method.method not in VALID_RANKING_METHODS:
+        raise ValueError("Unsupported ranking method.")
     weighting = process.weighting_method.parameters
     ranking = process.ranking_method.parameters
     if (not isinstance(weighting, dict) or set(weighting) - {"derivation"}
@@ -221,6 +226,59 @@ def _normalize_inputs(experiment):
             "random_seed": experiment.execution.random_seed, "weights": None
     }
 
+def _dependency_is_ready(result: RunResult) -> bool:
+    if result.execution.get("numerical_status") != "completed":
+        return False
+
+    result.validate_numerical_complete()
+    return True
+
+def _validate_execution_order(runs):
+    positions = {}
+
+    for index, run in enumerate(runs):
+        if run.key in positions:
+            raise ValueError(
+                f"Duplicate prepared execution key: {run.key!r}"
+            )
+        positions[run.key] = index
+
+    for run in runs:
+        for dependency_key in run.dependencies:
+            if dependency_key not in positions:
+                raise ValueError(
+                    f"{run.key}: missing dependency "
+                    f"{dependency_key!r}."
+                )
+
+            if positions[dependency_key] >= positions[run.key]:
+                raise ValueError(
+                    f"{run.key}: dependency {dependency_key!r} "
+                    "must appear before its consumer."
+                )
+
+def _create_run_result(run: PreparedRun) -> RunResult:
+    experiment = run.experiment
+
+    return RunResult(
+        experiment_id=experiment.id,
+        case_key=run.case_key,
+        name=experiment.name,
+        run_id=uuid4().hex,
+        variant_id=experiment.variant_id,
+        status="failed",
+        inputs=experiment.to_dict(),
+        execution={
+            "execution_key": run.key,
+            "repetition": run.repetition,
+            "seed": run.seed,
+            "dependencies": list(run.dependencies),
+            "reference_runs": dict(run.reference_runs),
+            "numerical_status": "pending",
+            "messages": [],
+        },
+    )
+
 def provenance(experiment, inputs):
     def _hash(payload):
         return hashlib.sha256(payload).hexdigest()
@@ -277,18 +335,8 @@ def calculate_entity(
         session=session,
         pairwise_matrix=pairwise_matrix,
         config=processing.weighting_method,
+        consistency=processing.consistency_method,
     )
-
-    # weights_by_id = {
-    #     item.criterion_id: item.weight
-    #     for item in weighting.criterion_weights
-    # }
-
-    # Validate unique IDs and exact criterion coverage before conversion.
-    # weights = np.asarray([
-    #     weights_by_id[criterion.id]
-    #     for criterion in session.criteria
-    # ])
 
     ranking = MCDMService.generate_ranking(
         session=session,
@@ -537,10 +585,11 @@ def execute_run(run: PreparedRun):
             processing=processing,
         )
 
+        result.set_status("calculated")
         result.execution["numerical_status"] = "completed"
-        result.status = "calculated"
 
     except Exception as error:
+        result.set_status("failed")
         result.execution["numerical_status"] = "failed"
         result.execution["messages"].append(
             f"{type(error).__name__}: {error}"
@@ -555,52 +604,64 @@ def execute_experiments(runs, output, *, ai_config=None, ai_client=None, preflig
         )
 
     ai_enabled = ai_client is not None
+    # results = []
+    # for run in runs:
+    #     # Always execute the numerical stages.
+    #     result = execute_run(run)
+    #     results.append(result)
+
+    #     if ai_enabled:
+    #         # Execute AI stages using trace, ai_config, and ai_client.
+    #         ...
+
+    runs = list(runs)
+    _validate_execution_order(runs)
+
+    completed = {}
     results = []
+
     for run in runs:
-        # Always execute the numerical stages.
-        result = execute_run(run)
+        blocked_by = {
+            key: completed[key]
+            for key in run.dependencies
+            if not _dependency_is_ready(completed[key])
+        }
+
+        if blocked_by:
+            result = _create_run_result(run)
+            result.set_status("blocked")
+
+            result.execution["numerical_status"] = "not_run"
+            result.execution["dependency_status"] = "blocked"
+
+            result.execution["blocked_by"] = {
+                key: {
+                    "run_id": dependency.run_id,
+                    "status": dependency.status,
+                    "numerical_status": dependency.execution.get(
+                        "numerical_status"
+                    ),
+                }
+                for key, dependency in blocked_by.items()
+            }
+
+            result.execution["messages"].append(
+                "Numerical execution was skipped because required "
+                "dependency results were unavailable."
+            )
+        else:
+            result = execute_run(run)
+            result.execution["dependency_status"] = "satisfied"
+
+        result.execution["dependency_run_ids"] = {
+            key: completed[key].run_id
+            for key in run.dependencies
+        }
+
+        completed[run.key] = result
         results.append(result)
 
-        if ai_enabled:
-            # Execute AI stages using trace, ai_config, and ai_client.
-            ...
+        # Global experiment ai checker
+        # if ai_enabled is False or run.:
 
     return "", results
-        # Store this run's inputs, results, and stage statuses.
-# def execute_experiments(
-#     *,
-#     runs,
-#     output,
-# ):
-#     completed = {}
-
-#     for case in runs:
-#         start, tick = timestamp(), time.perf_counter()
-#         e = case.experiment
-
-#         print(e)
-#         result = RunResult(
-#             experiment_id=e.id,
-#             variant_id=case.variation.variant_id if case.variation else e.variant_id,
-#             case_key=case.key,
-#             name=e.name,
-#             run_id=uuid4().hex,
-#             parent_run_id=completed[case.parent].run_id if case.parent else None, status="failed"
-#         )
-#         result.execution = {
-#             "started_at": start,
-#             "messages": [],
-#             "description": case.variation.description if case.variation else e.variant_description
-#         }
-
-#     try:
-#         result.provenance = provenance(e, normalized_inputs(e))
-#         if any(completed[d].status != "passed" for d in case.dependencies):
-#             result.status = "blocked"
-#             result.execution["messages"].append("A required parent or comparison run failed.")
-#         else:
-#             result.inputs, reused = resolve_inputs(case, completed)
-#             result.provenance = provenance(e, result.inputs)
-#     except Exception as error:
-#         result.status = "failed"
-#         result.execution["messages"].append(f"{type(error).__name__}: {error}")

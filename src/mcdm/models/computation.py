@@ -1,6 +1,6 @@
 """Result models for aggregated AHP weights and TOPSIS rankings."""
 from dataclasses import dataclass, field
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 from typing import Literal
 
 class CriterionWeight(BaseModel):
@@ -39,6 +39,26 @@ class WeightResult(BaseModel):
             "weighting method does not provide one."
         ),
     )
+
+    consistency_threshold: float = Field(
+        ge=0,
+        description=(
+            "Maximum acceptable AHP consistency ratio. If the computed "
+            "consistency ratio exceeds this value, the judgment matrix is "
+            "considered inconsistent."
+        ),
+    )
+    
+    @computed_field
+    @property
+    def exceeds_consistency_threshold(self) -> bool | None:
+        if self.consistency_ratio is None:
+            return None
+
+        return (
+            self.consistency_ratio
+            > self.consistency_threshold
+        )
 
 class AlternativeRanking(BaseModel):
     """TOPSIS ranking result for one policy alternative."""

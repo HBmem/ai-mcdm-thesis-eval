@@ -101,8 +101,9 @@ class ExperimentExecution:
     variations: list[ExecutionVariation] = field(default_factory=list)
     consistency_threshold: float = 0.10
 
-# @dataclass
-# class RunResult:
+@dataclass
+class ExperimentAI:
+    enabled: bool = False
 
 @dataclass
 class Experiment:
@@ -119,6 +120,7 @@ class Experiment:
     resources: ExperimentResources
     processing: ExperimentProcess
     execution: ExperimentExecution
+    ai: ExperimentAI
     session: DecisionSession
     source_path: str = ""
     variant_id: str | None = None

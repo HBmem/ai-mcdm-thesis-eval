@@ -22,7 +22,7 @@ from src.mcdm.models.methods import (
 )
 from src.experiments.models import (
     Experiment, ExperimentResources, ExperimentDefaults, ExperimentProcess,
-    AIConfig, ExperimentExecution, ExperimentStakeholders,
+    AIConfig, ExperimentExecution, ExperimentStakeholders, ExperimentAI
 )
 from src.experiments.participants import _participants, check_keys
 from src.experiments.variations import resolve_cases
@@ -44,6 +44,15 @@ def _read_json(path: Path) -> dict[str, Any]:
         raise ValueError(f"{path}: expected a JSON object.")
     return data
 
+def _ai(data: dict[str, Any]) -> ExperimentAI:
+    if not isinstance(data, dict):
+        raise ValueError("Processing must be an object.")
+    enabled = data["enabled"]
+    if not isinstance(enabled, bool):
+        raise ValueError("enabled must be bool.")
+    return ExperimentAI(
+        enabled=enabled
+    )
 
 def _processing(data: dict[str, Any]) -> ExperimentProcess:
     if not isinstance(data, dict):
@@ -200,6 +209,7 @@ def load_experiment_json(path: Path | str) -> list[Experiment]:
     if raw_defaults["pipeline"] != "mcdm" or raw_defaults["ai"].get("enabled") is not False:
         raise ValueError("This loader currently supports the numerical mcdm pipeline only.")
     process = _processing(raw_defaults["processing"])
+    ai = _ai(raw_defaults["ai"])
     defaults = ExperimentDefaults(
         pipeline=raw_defaults["pipeline"], seed=seed, repetition=repetitions,
         processing=process, ai=AIConfig(enabled=False),
@@ -236,6 +246,7 @@ def load_experiment_json(path: Path | str) -> list[Experiment]:
             execution=ExperimentExecution(
                 random_seed=seed, consistency_threshold=process.consistency_method.threshold,
             ),
+            ai=ai,
             session=session,
             source_path=str(path),
             variant_id=resolved.key,
