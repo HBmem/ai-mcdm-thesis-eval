@@ -1,10 +1,10 @@
 """Result models for aggregated AHP weights and TOPSIS rankings."""
+from dataclasses import dataclass, field
 from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 class CriterionWeight(BaseModel):
-    """
-    Final AHP weight assigned to one criterion after stakeholder aggregation.
-    """
+    """Final AHP weight assigned to one criterion after stakeholder aggregation."""
 
     criterion_id: str = Field(
         ...,
@@ -25,10 +25,23 @@ class CriterionWeight(BaseModel):
         ),
     )
 
+class WeightResult(BaseModel):
+    criterion_weights: list[CriterionWeight] = Field(
+        min_length=1,
+        description="Calculated weights, identified by criterion.",
+    )
+
+    consistency_ratio: float | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "AHP consistency ratio. None when the selected "
+            "weighting method does not provide one."
+        ),
+    )
+
 class AlternativeRanking(BaseModel):
-    """
-    TOPSIS ranking result for one policy alternative.
-    """
+    """TOPSIS ranking result for one policy alternative."""
 
     alternative_id: str = Field(
         ...,
@@ -59,32 +72,24 @@ class AlternativeRanking(BaseModel):
         ),
     )
 
-class MCDMResult(BaseModel):
-    """
-    Deterministic result of the AHP-TOPSIS evaluation.
-
-    This object should generally be given to the AI explanation layer rather
-    than asking the AI to calculate rankings itself.
-    """
-
-    criterion_weights: list[CriterionWeight] = Field(
-        ...,
-        description="AHP weights generated for each evaluation criterion.",
-    )
-
-    consistency_ratio: float = Field(
-        ...,
-        description=(
-            "AHP consistency ratio for the aggregated pairwise comparison "
-            "matrix. Lower values indicate more internally consistent "
-            "comparisons."
-        ),
-    )
-
+class RankingResult(BaseModel):
     rankings: list[AlternativeRanking] = Field(
-        ...,
-        description=(
-            "TOPSIS ranking of all evaluated alternatives from highest "
-            "to lowest preference."
-        ),
+        min_length=1,
+        description="Alternatives ordered from highest to lowest preference.",
     )
+
+@dataclass
+class EntityCalculation:
+    entity_id: str
+    scope: Literal["participant", "group", "session"]
+    pairwise_matrix: list[list[float]]
+    weighting: WeightResult
+    ranking: RankingResult
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass
+class ExperimentCalculation:
+    participants: list[EntityCalculation] = field(default_factory=list)
+    groups: list[EntityCalculation] = field(default_factory=list)
+    session: EntityCalculation | None = None

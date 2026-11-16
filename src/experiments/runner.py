@@ -1,19 +1,39 @@
 """Prepare executions from schema-3 cases that the loader already resolved."""
+
+import math
+import re
+import time
+import hashlib
+import json
+import sys
+import subprocess
+import numpy as np
+
 from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import dataclass
 from itertools import combinations
-import math
-import re
+from uuid import uuid4
+from pathlib import Path
+from importlib.metadata import PackageNotFoundError, version
 
+from src.common.time import timestamp
 from src.experiments.assertions import validate_assertions
 from src.experiments.models import Experiment
+from src.experiments.results import RunResult
 from src.mcdm.enums import (
     WeightingMethod, RankingMethod, MeanMethod, GroupPowerMethod,
     EmptyGroupPolicy, OnExceedancePolicy, PairwisePreference,
 )
+from src.mcdm.service import MCDMService
+from src.mcdm.models.computation import EntityCalculation
 from src.mcdm.reference import DERIVATIONS
 
+
+ROOT = Path(__file__).resolve().parent.parent
+
+def _hash(payload):
+    return hashlib.sha256(payload).hexdigest()
 
 @dataclass(frozen=True)
 class PreparedRun:
@@ -175,6 +195,116 @@ def _normalize_selector(value):
 def _run_key(case_key, repetition):
     return f"{case_key}#r{repetition:03d}"
 
+def _normalize_inputs(experiment):
+    session = experiment.session
+    return {
+        "experiment_schema_version": experiment.schema_version,
+        "research_purpose": experiment.research_purpose,
+        "scenario": {
+            "id": experiment.scenario_id,
+            "description": experiment.scenario_description,
+            "policy_question": experiment.scenario_policy_question
+        },
+        "criteria": [c.model_dump(mode="json") for c in session.criteria],
+        "preference_criteria": [c.model_dump(mode="json") for c in session.criteria],
+        "questions": [q.model_dump(mode="json") for q in session.questions],
+        "groups": [g.model_dump(mode="json") for g in session.stakeholder_groups],
+        "participants": [{"id": p.id, "group_id": p.stakeholder_group_id,
+                              "judgments": {r.question_id: float(r.preference.ahp_scale if hasattr(r.preference, "ahp_scale") else r.preference) for r in p.responses}}
+                             for p in session.participants],
+        "alternatives": [{"id": a.id, "name": a.name, "description": a.description,
+                              "values": {v.criterion_id: v.value for v in a.criterion_values}} for a in session.alternatives],
+            "processing": {"weighting_method": experiment.processing.weighting_method.method.value,
+                           "ranking_method": experiment.processing.ranking_method.method.value,
+                           "wd": experiment.processing.weighting_method.parameters.get("wd", "geometric")},
+            "consistency_threshold": experiment.execution.consistency_threshold,
+            "random_seed": experiment.execution.random_seed, "weights": None
+    }
+
+def provenance(experiment, inputs):
+    def _hash(payload):
+        return hashlib.sha256(payload).hexdigest()
+
+    def git(*args):
+        result = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+
+    hashes = {}
+    source = Path(experiment.source_path)
+    for label, path in (
+        ("experiment", source),
+        ("criteria", source.parent / experiment.resources.criteria),
+        ("alternatives", source.parent / experiment.resources.alternatives),
+        ("dataset", source.parent / experiment.resources.dataset)
+    ):
+        hashes[label] = _hash(path.read_bytes())
+
+    versions = {}
+
+    for package in ("numpy", "scipy", "pydantic", "pandas", "streamlit", "openai"):
+        try:
+            versions[package] = version(package)
+        except PackageNotFoundError:
+            versions[package] = None
+    # Include untracked source files: git revision alone cannot identify this workspace.
+    code = {str(p.relative_to(ROOT)): _hash(p.read_bytes()) for p in sorted((ROOT / "src").rglob("*.py"))}
+
+    for name in ("main.py", "app.py"):
+        code[name] = _hash((ROOT / name).read_bytes())
+    return {
+        "resource_hashes": hashes,
+        "input_hash": _hash(json.dumps(inputs, sort_keys=True, allow_nan=False).encode()),
+        "code_revision": git("rev-parse", "HEAD"),
+        "dirty_worktree": bool(git("status", "--porcelain")),
+        "code_hashes": code,
+        "python": sys.version,
+        "dependencies": versions,
+        "seed": experiment.execution.random_seed,
+        "engine": "independent_numpy_reference",
+        "poliinsight_validated": False
+    }
+
+def calculate_entity(
+    *,
+    entity_id,
+    scope,
+    pairwise_matrix,
+    decision_matrix,
+    session,
+    processing,
+    metadata=None,
+) -> EntityCalculation:
+    weighting = MCDMService.generate_weights(
+        session=session,
+        pairwise_matrix=pairwise_matrix,
+        config=processing.weighting_method,
+    )
+
+    # weights_by_id = {
+    #     item.criterion_id: item.weight
+    #     for item in weighting.criterion_weights
+    # }
+
+    # Validate unique IDs and exact criterion coverage before conversion.
+    # weights = np.asarray([
+    #     weights_by_id[criterion.id]
+    #     for criterion in session.criteria
+    # ])
+
+    ranking = MCDMService.generate_ranking(
+        session=session,
+        decision_matrix=decision_matrix,
+        weighting=weighting,
+        config=processing.ranking_method,
+    )
+
+    return EntityCalculation(
+        entity_id=entity_id,
+        scope=scope,
+        pairwise_matrix=pairwise_matrix.tolist(),
+        weighting=weighting,
+        ranking=ranking,
+        metadata={} if metadata is None else dict(metadata),
+    )
 
 def prepare_runs(
     experiments: Iterable[Experiment],
@@ -308,12 +438,169 @@ def prepare_runs(
             ))
     return runs
 
+def execute_run(run: PreparedRun):
+    experiment =  run.experiment
+    session = experiment.session
+    processing = experiment.processing
 
-# def prepare_experiments(experiments, scenario=None):
-#     """Compatibility name for the runner skeleton's original preparation hook."""
-#     return prepare_runs(experiments, scenario)
+    result = RunResult(
+        experiment_id=experiment.id,
+        case_key=run.case_key,
+        name=experiment.name,
+        run_id=uuid4().hex,
+        variant_id=experiment.variant_id,
+        status="failed",
+        inputs=experiment.to_dict(),
+        execution={
+            "execution_key": run.key,
+            "repetition": run.repetition,
+            "seed": run.seed,
+            "reference_runs": dict(run.reference_runs),
+            "numerical_status": "pending",
+            "messages": [],
+        },
+    )
 
+    try:
+        result.execution["numerical_status"] = "running"
 
-def execute_experiments(runs):
-    """Execution remains separate from planning and has not been implemented."""
-    raise NotImplementedError("Execute the prepared calculations before evaluating comparisons.")
+        decision_matrix = MCDMService.create_decision_matrix(
+            session
+        )
+
+        # Participants
+        for participant in session.participants:
+            matrix = MCDMService.create_participant_matrix(
+                session,
+                participant
+            )
+
+            calculation = calculate_entity(
+                entity_id=participant.id,
+                scope="participant",
+                pairwise_matrix=matrix,
+                decision_matrix=decision_matrix,
+                session=session,
+                processing=processing,
+                metadata={
+                    "group_id": participant.stakeholder_group_id,
+                },
+            )
+
+            result.mcdm.participants.append(calculation)
+            
+        # Stakeholder groups
+        for group in session.stakeholder_groups:
+            members = [
+                participant
+                for participant in session.participants
+                if participant.stakeholder_group_id == group.id
+            ]
+
+            if not members:
+                # This branch assumes your configured policy is "exclude".
+                continue
+
+            matrix = MCDMService.create_stakeholder_group_matrix(
+                session,
+                members,
+                config=processing.aggregation_method,
+            )
+
+            calculation = calculate_entity(
+                entity_id=group.id,
+                scope="group",
+                pairwise_matrix=matrix,
+                decision_matrix=decision_matrix,
+                session=session,
+                processing=processing,
+                metadata={
+                    "participant_count": len(members),
+                    "voting_power": group.voting_power,
+                },
+            )
+
+            result.mcdm.groups.append(calculation)
+
+        # Complete session.
+        matrix = MCDMService.create_session_matrix(
+            session,
+            config=processing.aggregation_method,
+        )
+
+        result.mcdm.session = calculate_entity(
+            entity_id=session.id,
+            scope="session",
+            pairwise_matrix=matrix,
+            decision_matrix=decision_matrix,
+            session=session,
+            processing=processing,
+        )
+
+        result.execution["numerical_status"] = "completed"
+        result.status = "calculated"
+
+    except Exception as error:
+        result.execution["numerical_status"] = "failed"
+        result.execution["messages"].append(
+            f"{type(error).__name__}: {error}"
+        )
+
+    return result
+
+def execute_experiments(runs, output, *, ai_config=None, ai_client=None, preflight=None):
+    if (ai_config is None) != (ai_client is None):
+        raise ValueError(
+            "Provide both ai_config and ai_client, or neither."
+        )
+
+    ai_enabled = ai_client is not None
+    results = []
+    for run in runs:
+        # Always execute the numerical stages.
+        result = execute_run(run)
+        results.append(result)
+
+        if ai_enabled:
+            # Execute AI stages using trace, ai_config, and ai_client.
+            ...
+
+    return "", results
+        # Store this run's inputs, results, and stage statuses.
+# def execute_experiments(
+#     *,
+#     runs,
+#     output,
+# ):
+#     completed = {}
+
+#     for case in runs:
+#         start, tick = timestamp(), time.perf_counter()
+#         e = case.experiment
+
+#         print(e)
+#         result = RunResult(
+#             experiment_id=e.id,
+#             variant_id=case.variation.variant_id if case.variation else e.variant_id,
+#             case_key=case.key,
+#             name=e.name,
+#             run_id=uuid4().hex,
+#             parent_run_id=completed[case.parent].run_id if case.parent else None, status="failed"
+#         )
+#         result.execution = {
+#             "started_at": start,
+#             "messages": [],
+#             "description": case.variation.description if case.variation else e.variant_description
+#         }
+
+#     try:
+#         result.provenance = provenance(e, normalized_inputs(e))
+#         if any(completed[d].status != "passed" for d in case.dependencies):
+#             result.status = "blocked"
+#             result.execution["messages"].append("A required parent or comparison run failed.")
+#         else:
+#             result.inputs, reused = resolve_inputs(case, completed)
+#             result.provenance = provenance(e, result.inputs)
+#     except Exception as error:
+#         result.status = "failed"
+#         result.execution["messages"].append(f"{type(error).__name__}: {error}")

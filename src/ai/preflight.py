@@ -7,6 +7,7 @@ from uuid import uuid4
 from openai import APIConnectionError, APITimeoutError, APIStatusError, APIError
 
 from src.common.privacy import sanitize
+from src.common.time import timestamp
 from src.ai.config import AIConfig
 from src.ai.models.analysis import Record
 
@@ -34,10 +35,6 @@ class PreflightRecord(Record):
     response: dict
     receipt: dict
     redacted: bool = False
-
-def timestamp():
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
 
 def check_model_access(config: AIConfig, client):
     started_at, tick = timestamp(), time.perf_counter()

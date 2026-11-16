@@ -58,6 +58,13 @@ def main(argv=None):
             # TODO: Execute numerical and AI stages here
             # Pass ai_config and client to your executor.
             # Keep model calls inside this context.
+            path, results = execute_experiments(
+                runs,
+                args.output,
+                ai_config=ai_config,
+                ai_client=client,
+                preflight=preflight
+            )
         except ValueError as error:
             print(f"Configuration error: {error}", file=sys.stderr)
             return 2
@@ -66,13 +73,7 @@ def main(argv=None):
             return error.exit_code
     else:
         try:
-            path, results = execute_experiments(
-                runs,
-                args.output,
-                ai_config=None,
-                ai_client=None,
-                preflight=None
-            )
+            path, results = execute_experiments(runs, args.output)
         except ValueError as error:
             print(f"Configuration error: {error}", file=sys.stderr)
             return 2

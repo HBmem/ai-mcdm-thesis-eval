@@ -1,11 +1,12 @@
 from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from src.mcdm.enums import PairwisePreference
 from src.mcdm.models.domain import StakeholderGroup
 from src.mcdm.models.methods import RankingMethodConfig, WeightingMethodConfig, AggregationMethodConfig, ConsistencyMethodConfig
 from src.mcdm.models.session import DecisionSession
+# from src.mcdm.models.computation import MCDMResult
 
 @dataclass
 class ExperimentParticipant:
@@ -99,6 +100,9 @@ class ExperimentExecution:
     variants: bool = False
     variations: list[ExecutionVariation] = field(default_factory=list)
     consistency_threshold: float = 0.10
+
+# @dataclass
+# class RunResult:
 
 @dataclass
 class Experiment:

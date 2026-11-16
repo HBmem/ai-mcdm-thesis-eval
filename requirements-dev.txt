@@ -1,4 +1,3 @@
 -r requirements.txt
-# Existing legacy service tests; the reference engine does not depend on pyDecision.
-pyDecision==5.1.8
+# PyDecision is a runtime dependency; installed through requirements.txt.
 ipython>=8,<10
