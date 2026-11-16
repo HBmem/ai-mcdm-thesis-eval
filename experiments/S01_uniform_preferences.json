@@ -244,7 +244,10 @@
       "description": "One predefined participant per group; every left-to-right criterion importance ratio is 1 and every group has voting power 0.2.",
       "purpose": "Provide the uniform-preference baseline for numerical checks and later experiment comparisons.",
       "hypothesis": "All participant and group matrices are identical, all consistency ratios are zero, and all four session criterion weights are 0.25. Equal criterion importance does not require equal alternative scores.",
+      "result_dependencies": [],
       "operations": [],
+      "runtime_operations": [],
+      "reuse": {},
       "comparisons": [],
       "assertions": [
         {

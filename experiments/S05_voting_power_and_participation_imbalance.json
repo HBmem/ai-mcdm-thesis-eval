@@ -244,7 +244,10 @@
       "description": "One predefined participant per group with voting power 0.2 each. The heterogeneous preference profiles from the original S04 and S05 experiments are quantized to the legacy PairwisePreference scale.",
       "purpose": "Establish a local baseline that varies group preferences while holding participation and voting power equal.",
       "hypothesis": "The heterogeneous group judgments produce distinct group weight vectors and a session weight vector different from the uniform-preference S01 control.",
+      "result_dependencies": [],
       "operations": [],
+      "runtime_operations": [],
+      "reuse": {},
       "comparisons": [
         {
           "id": "against_uniform_preferences",
@@ -326,6 +329,7 @@
       "description": "Keep one participant per group and all submitted judgments fixed; assign group voting powers of 0.1, 0.1, 0.2, 0.4, and 0.2.",
       "purpose": "Measure the effect of changing assigned group influence without changing the participating preference profiles.",
       "hypothesis": "Individual and group AHP weights remain unchanged, while session criterion weights change. Winner and rank changes are measured without assuming that they must occur.",
+      "result_dependencies": [],
       "input_from": "S05/control",
       "operations": [
         {
@@ -339,6 +343,8 @@
           }
         }
       ],
+      "runtime_operations": [],
+      "reuse": {},
       "comparisons": [
         {
           "id": "against_equal_power",
@@ -432,6 +438,7 @@
       "description": "Resize the environmental advocates group to 30 participants and each other group to 5 participants by repeating its predefined judgment template. Counts are final group sizes, including the original participants.",
       "purpose": "Test whether replication of identical within-group preferences leaves numerical results unchanged when group voting powers remain equal.",
       "hypothesis": "All group weights, session weights, TOPSIS scores, and winner sets match the control despite the unequal final participant counts. This expectation applies to template replication and does not imply invariance under changes in preference composition.",
+      "result_dependencies": [],
       "input_from": "S05/control",
       "operations": [
         {
@@ -490,6 +497,8 @@
           "id_pattern": "{group_id}_p{index:02d}"
         }
       ],
+      "runtime_operations": [],
+      "reuse": {},
       "comparisons": [
         {
           "id": "against_equal_participation",

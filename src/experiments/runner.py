@@ -35,6 +35,11 @@ ROOT = Path(__file__).resolve().parent.parent
 VALID_WEIGHTING_METHODS = [WeightingMethod.AHP]
 VALID_RANKING_METHODS = [RankingMethod.TOPSIS]
 
+ALLOWED_POLICIES = {
+    "alternative_alignment": {"require_identical_ids", "common_ids"},
+    "criterion_alignment": {"require_identical_ids"},
+}
+
 def _hash(payload):
     return hashlib.sha256(payload).hexdigest()
 
@@ -179,9 +184,12 @@ def _references(experiment, assertion_references):
             raise ValueError("A comparison specifies unsupported metrics.")
         if not _nonnegative_number(comparison.get("tie_atol", 1e-12)):
             raise ValueError("Comparison tie_atol must be finite and nonnegative.")
-        for field in ("alternative_alignment", "criterion_alignment"):
-            if comparison.get(field, "require_identical_ids") != "require_identical_ids":
-                raise ValueError(f"Unsupported comparison {field} policy.")
+        for field, allowed in ALLOWED_POLICIES.items():
+            policy = comparison.get(field, "require_identical_ids")
+            if not isinstance(policy, str) or policy not in allowed:
+                raise ValueError(
+                    f"Unsupported comparison {field} policy: {policy!r}."
+                )
         references.append(comparison.get("reference"))
     references.extend(assertion_references)
     if any(not isinstance(ref, str) or not ref for ref in references):
@@ -395,12 +403,30 @@ def prepare_runs(
                 raise ValueError(f"{key}: missing referenced case {reference!r}.")
         for comparison in catalog[key].comparisons:
             other = catalog[comparison["reference"]]
-            for entities in ("criteria", "alternatives"):
-                own_ids = {e.id for e in getattr(catalog[key].session, entities)}
-                other_ids = {e.id for e in getattr(other.session, entities)}
-                if own_ids != other_ids:
+
+            for entities, policy_field in (
+                ("criteria", "criterion_alignment"),
+                ("alternatives", "alternative_alignment"),
+            ):
+                own_ids = {
+                    entity.id
+                    for entity in getattr(catalog[key].session, entities)
+                }
+                other_ids = {
+                    entity.id
+                    for entity in getattr(other.session, entities)
+                }
+                policy = comparison.get(
+                    policy_field, "require_identical_ids"
+                )
+
+                # Strict comparisons require the same entities on both sides.
+                # common_ids comparisons may use different alternative sets;
+                # their intersection is determined during comparison execution.
+                if policy == "require_identical_ids" and own_ids != other_ids:
                     raise ValueError(
-                        f"{key}: comparison {comparison['id']!r} requires identical {entities} IDs."
+                        f"{key}: comparison {comparison['id']!r} "
+                        f"requires identical {entities} IDs."
                     )
     order, visiting, visited = [], set(), set()
 
