@@ -1,6 +1,6 @@
 {
   "schema_version": "3.0",
-  "experiment_id": "S08",
+  "experiment_id": "S07",
   "name": "Criterion Weight Perturbation",
   "description": "Twenty explicit session-weight settings independently perturb each criterion while keeping other weights equal and preserving original participant and group preference calculations.",
   "purpose": "Measure session-ranking sensitivity across a fixed weight grid; adjacent comparisons bound observed winner changes without claiming exact transition thresholds.",
@@ -197,7 +197,7 @@
     }
   },
   "baseline": {
-    "case": "S01/control"
+    "case": "S00/control"
   },
   "assertions": [
     {
@@ -265,7 +265,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -301,7 +301,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -313,7 +313,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -356,7 +356,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -370,7 +370,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c1_w025",
+          "reference": "S07/c1_w025",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -406,7 +406,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -418,7 +418,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -461,7 +461,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -475,7 +475,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c1_w040",
+          "reference": "S07/c1_w040",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -511,7 +511,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -523,7 +523,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -566,7 +566,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -580,7 +580,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c1_w055",
+          "reference": "S07/c1_w055",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -616,7 +616,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -628,7 +628,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -671,7 +671,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -685,7 +685,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c1_w070",
+          "reference": "S07/c1_w070",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -721,7 +721,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -733,7 +733,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -776,7 +776,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -812,7 +812,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -824,7 +824,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -867,7 +867,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -881,7 +881,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c2_w025",
+          "reference": "S07/c2_w025",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -917,7 +917,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -929,7 +929,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -972,7 +972,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -986,7 +986,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c2_w040",
+          "reference": "S07/c2_w040",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1022,7 +1022,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -1034,7 +1034,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -1077,7 +1077,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1091,7 +1091,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c2_w055",
+          "reference": "S07/c2_w055",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1127,7 +1127,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -1139,7 +1139,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -1182,7 +1182,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1196,7 +1196,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c2_w070",
+          "reference": "S07/c2_w070",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1232,7 +1232,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -1244,7 +1244,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -1287,7 +1287,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1323,7 +1323,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -1335,7 +1335,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -1378,7 +1378,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1392,7 +1392,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c3_w025",
+          "reference": "S07/c3_w025",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1428,7 +1428,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -1440,7 +1440,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -1483,7 +1483,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1497,7 +1497,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c3_w040",
+          "reference": "S07/c3_w040",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1533,7 +1533,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -1545,7 +1545,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -1588,7 +1588,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1602,7 +1602,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c3_w055",
+          "reference": "S07/c3_w055",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1638,7 +1638,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -1650,7 +1650,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -1693,7 +1693,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1707,7 +1707,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c3_w070",
+          "reference": "S07/c3_w070",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1743,7 +1743,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -1755,7 +1755,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -1798,7 +1798,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1834,7 +1834,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -1846,7 +1846,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -1889,7 +1889,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1903,7 +1903,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c4_w025",
+          "reference": "S07/c4_w025",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -1939,7 +1939,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -1951,7 +1951,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -1994,7 +1994,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -2008,7 +2008,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c4_w040",
+          "reference": "S07/c4_w040",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -2044,7 +2044,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -2056,7 +2056,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -2099,7 +2099,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -2113,7 +2113,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c4_w055",
+          "reference": "S07/c4_w055",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -2149,7 +2149,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -2161,7 +2161,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]
@@ -2204,7 +2204,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -2218,7 +2218,7 @@
         },
         {
           "id": "against_previous_weight",
-          "reference": "S08/c4_w070",
+          "reference": "S07/c4_w070",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -2254,7 +2254,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -2266,7 +2266,7 @@
           "check": "scoped_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant"
             ]

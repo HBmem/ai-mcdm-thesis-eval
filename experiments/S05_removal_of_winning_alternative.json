@@ -1,9 +1,9 @@
 {
   "schema_version": "3.0",
-  "experiment_id": "S09",
-  "name": "Dominated Alternative",
-  "description": "Add a synthetic alternative dominated by A4, then remove it and compare the restored experiment with S01.",
-  "purpose": "Measure alternative-set sensitivity and verify restoration while preserving participant, group, and session criterion weights.",
+  "experiment_id": "S05",
+  "name": "Removal of Winning Alternative",
+  "description": "Run the uniform-preference S00 control, remove its complete TOPSIS winner set, and rerank the remaining alternatives using the same criterion weights and vector normalization over the reduced decision matrix.",
+  "purpose": "Measure how removing the baseline winner changes scores and relative ordering among surviving alternatives while keeping stakeholder judgments, criterion definitions, and applied criterion weights fixed.",
   "scenario": {
     "id": "transportation_prioritization",
     "description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
@@ -197,7 +197,7 @@
     }
   },
   "baseline": {
-    "case": "S01/control"
+    "case": "S00/control"
   },
   "assertions": [
     {
@@ -239,36 +239,27 @@
   ],
   "cases": [
     {
-      "case_id": "add_dominated",
-      "name": "Add dominated alternative",
-      "description": "Add A6 with the legacy performance values, which are strictly dominated by A4 on all four criteria.",
-      "purpose": "Observe the effect of adding a dominated option under fixed preferences.",
-      "hypothesis": "A6 scores no better than A4 and all scopes preserve baseline weights. Rankings among existing options may change.",
-      "legacy_variant_id": "S09_ADD",
+      "case_id": "remove_winner",
+      "name": "Remove baseline winners while preserving weights",
+      "description": "Use the same explicit stakeholder inputs and resources as S01/control. Wait for its numerical results, remove every alternative tied for its highest TOPSIS score within an absolute tolerance of 1e-12, and reuse its criterion weights. Fail the case if removal would leave no alternatives.",
+      "purpose": "Isolate the effect of changing the alternative set on TOPSIS normalization, scores, and the relative ranking of surviving alternatives.",
+      "hypothesis": "The resolved alternative set equals the S00 alternative set minus its winner set; participant judgments, group weights, and applied criterion weights are preserved. Score changes and rank reversals among survivors are measured without requiring either to occur.",
       "result_dependencies": [
-        "S01/control"
+        "S00/control"
       ],
       "operations": [],
       "runtime_operations": [
         {
-          "type": "add_alternatives",
-          "alternatives": [
-            {
-              "id": "A6",
-              "name": "Inefficient Infrastructure Program",
-              "values": {
-                "C1": 9.0,
-                "C2": 40.0,
-                "C3": 30.0,
-                "C4": 30.0
-              }
-            }
-          ]
+          "type": "remove_winner",
+          "reference": "S00/control",
+          "tie_policy": "remove_all_winners",
+          "tie_atol": 1e-12,
+          "on_empty_alternatives": "error"
         }
       ],
       "reuse": {
         "criterion_weights": {
-          "reference": "S01/control",
+          "reference": "S00/control",
           "scopes": [
             "participant",
             "group",
@@ -279,29 +270,48 @@
       },
       "comparisons": [
         {
-          "id": "against_original_alternatives",
-          "reference": "S01/control",
+          "id": "against_baseline_survivors",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
-            "winner_changed",
             "spearman_rho",
             "kendall_tau_b"
           ],
           "alternative_alignment": "common_ids",
           "criterion_alignment": "require_identical_ids",
-          "tie_atol": 1e-12,
-          "rerank_common_alternatives": true
+          "rerank_common_alternatives": true,
+          "tie_atol": 1e-12
         }
       ],
       "assertions": [
         {
-          "id": "dominated_score_not_better",
-          "check": "alternative_score_not_greater",
-          "stage": "calculation",
+          "id": "only_baseline_winners_removed",
+          "check": "alternative_ids_equal_reference_without_winners",
+          "stage": "comparison",
           "parameters": {
-            "alternative": "A6",
-            "reference_alternative": "A4"
+            "reference": "S00/control",
+            "tie_atol": 1e-12
+          },
+          "expected": true,
+          "severity": "error"
+        },
+        {
+          "id": "judgments_preserved",
+          "check": "participant_judgments_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S00/control"
+          },
+          "expected": true,
+          "severity": "error"
+        },
+        {
+          "id": "group_preferences_preserved",
+          "check": "group_weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
@@ -310,139 +320,15 @@
         },
         {
           "id": "criterion_weights_preserved",
-          "check": "scoped_weights_equal",
+          "check": "weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
-            "scopes": [
-              "participant",
-              "group",
-              "session"
-            ]
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error",
           "atol": 1e-10,
           "rtol": 0
-        }
-      ]
-    },
-    {
-      "case_id": "remove_dominated",
-      "name": "Remove dominated alternative",
-      "description": "Inherit the resolved alternative set from S09/add_dominated, remove A6, and retain its weights at every scope.",
-      "purpose": "Verify that undoing the alternative addition restores the original numerical results.",
-      "hypothesis": "Alternative IDs, criterion weights, TOPSIS scores, and winner sets return to S01 values within numerical tolerance.",
-      "legacy_variant_id": "S09_REMOVE",
-      "result_dependencies": [
-        "S09/add_dominated"
-      ],
-      "operations": [],
-      "runtime_operations": [
-        {
-          "type": "inherit_alternatives",
-          "reference": "S09/add_dominated"
-        },
-        {
-          "type": "remove_alternatives",
-          "alternative_ids": [
-            "A6"
-          ]
-        }
-      ],
-      "reuse": {
-        "criterion_weights": {
-          "reference": "S09/add_dominated",
-          "scopes": [
-            "participant",
-            "group",
-            "session"
-          ],
-          "criterion_alignment": "require_identical_ids"
-        }
-      },
-      "comparisons": [
-        {
-          "id": "against_original_baseline",
-          "reference": "S01/control",
-          "metrics": [
-            "weight_delta",
-            "score_delta",
-            "winner_changed",
-            "spearman_rho",
-            "kendall_tau_b"
-          ],
-          "alternative_alignment": "require_identical_ids",
-          "criterion_alignment": "require_identical_ids",
-          "tie_atol": 1e-12
-        }
-      ],
-      "assertions": [
-        {
-          "id": "alternatives_restored",
-          "check": "alternative_ids_equal",
-          "stage": "comparison",
-          "parameters": {
-            "reference": "S01/control"
-          },
-          "expected": true,
-          "severity": "error"
-        },
-        {
-          "id": "criterion_weights_restored",
-          "check": "scoped_weights_equal",
-          "stage": "comparison",
-          "parameters": {
-            "reference": "S01/control",
-            "scopes": [
-              "participant",
-              "group",
-              "session"
-            ]
-          },
-          "expected": true,
-          "severity": "error",
-          "atol": 1e-10,
-          "rtol": 0
-        },
-        {
-          "id": "scores_restored",
-          "check": "scoped_scores_equal",
-          "stage": "comparison",
-          "parameters": {
-            "reference": "S01/control",
-            "scopes": [
-              "participant",
-              "group",
-              "session"
-            ]
-          },
-          "expected": true,
-          "severity": "error",
-          "atol": 1e-10,
-          "rtol": 0
-        },
-        {
-          "id": "session_scores_restored",
-          "check": "scores_equal",
-          "stage": "comparison",
-          "parameters": {
-            "reference": "S01/control"
-          },
-          "expected": true,
-          "severity": "error",
-          "atol": 1e-10,
-          "rtol": 0
-        },
-        {
-          "id": "winner_set_restored",
-          "check": "winner_sets_equal",
-          "stage": "comparison",
-          "parameters": {
-            "reference": "S01/control"
-          },
-          "expected": true,
-          "severity": "error"
         }
       ]
     }

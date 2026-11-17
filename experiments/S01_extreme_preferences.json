@@ -1,6 +1,6 @@
 {
   "schema_version": "3.0",
-  "experiment_id": "S02",
+  "experiment_id": "S01",
   "name": "Extreme pairwise response boundaries",
   "description": "Boundary tests using all-maximum and all-minimum pairwise preference codes with a fixed criterion question order.",
   "purpose": "Verify reciprocal boundaries, consistency warnings, retention of inconsistent judgments, and distinct aggregate preferences at opposite scale extremes.",
@@ -150,7 +150,7 @@
     }
   },
   "baseline": {
-    "case": "S02/max"
+    "case": "S01/max"
   },
   "assertions": [
     {
@@ -205,7 +205,7 @@
       "comparisons": [
         {
           "id": "against_opposite_boundary",
-          "reference": "S02/min",
+          "reference": "S01/min",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -250,7 +250,7 @@
           "check": "weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S02/min"
+            "reference": "S01/min"
           },
           "expected": false,
           "severity": "error",
@@ -329,7 +329,7 @@
       "comparisons": [
         {
           "id": "against_opposite_boundary",
-          "reference": "S02/max",
+          "reference": "S01/max",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -374,7 +374,7 @@
           "check": "weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S02/max"
+            "reference": "S01/max"
           },
           "expected": false,
           "severity": "error",

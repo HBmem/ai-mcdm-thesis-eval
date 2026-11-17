@@ -1,6 +1,6 @@
 {
   "schema_version": "3.0",
-  "experiment_id": "S05",
+  "experiment_id": "S04",
   "name": "Voting Power and Participation Imbalance",
   "description": "Three controlled conditions use the same heterogeneous group preferences and alternative data: equal voting power, unequal voting power, and unequal participant counts at equal voting power. The original ratio judgments are quantized to the legacy PairwisePreference scale; the original ratios are retained in scale_conversion metadata.",
   "purpose": "Separate the effect of assigned group voting power from the effect of repeating identical participants within each group under two-stage geometric aggregation.",
@@ -197,7 +197,7 @@
     }
   },
   "baseline": {
-    "case": "S05/control"
+    "case": "S04/control"
   },
   "assertions": [
     {
@@ -241,9 +241,9 @@
     {
       "case_id": "control",
       "name": "Equal power and equal participation",
-      "description": "One predefined participant per group with voting power 0.2 each. The heterogeneous preference profiles from the original S04 and S05 experiments are quantized to the legacy PairwisePreference scale.",
+      "description": "One predefined participant per group with voting power 0.2 each. The heterogeneous preference profiles from the original S03 and S04 experiments are quantized to the legacy PairwisePreference scale.",
       "purpose": "Establish a local baseline that varies group preferences while holding participation and voting power equal.",
-      "hypothesis": "The heterogeneous group judgments produce distinct group weight vectors and a session weight vector different from the uniform-preference S01 control.",
+      "hypothesis": "The heterogeneous group judgments produce distinct group weight vectors and a session weight vector different from the uniform-preference S00 control.",
       "result_dependencies": [],
       "operations": [],
       "runtime_operations": [],
@@ -251,7 +251,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -314,7 +314,7 @@
           "check": "weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": false,
           "severity": "error",
@@ -330,7 +330,7 @@
       "purpose": "Measure the effect of changing assigned group influence without changing the participating preference profiles.",
       "hypothesis": "Individual and group AHP weights remain unchanged, while session criterion weights change. Winner and rank changes are measured without assuming that they must occur.",
       "result_dependencies": [],
-      "input_from": "S05/control",
+      "input_from": "S04/control",
       "operations": [
         {
           "type": "set_group_voting_powers",
@@ -348,7 +348,7 @@
       "comparisons": [
         {
           "id": "against_equal_power",
-          "reference": "S05/control",
+          "reference": "S04/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -401,7 +401,7 @@
           "check": "participant_judgments_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S05/control"
+            "reference": "S04/control"
           },
           "expected": true,
           "severity": "error"
@@ -411,7 +411,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S05/control"
+            "reference": "S04/control"
           },
           "expected": true,
           "severity": "error",
@@ -423,7 +423,7 @@
           "check": "weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S05/control"
+            "reference": "S04/control"
           },
           "expected": false,
           "severity": "error",
@@ -439,7 +439,7 @@
       "purpose": "Test whether replication of identical within-group preferences leaves numerical results unchanged when group voting powers remain equal.",
       "hypothesis": "All group weights, session weights, TOPSIS scores, and winner sets match the control despite the unequal final participant counts. This expectation applies to template replication and does not imply invariance under changes in preference composition.",
       "result_dependencies": [],
-      "input_from": "S05/control",
+      "input_from": "S04/control",
       "operations": [
         {
           "type": "resize_group",
@@ -502,7 +502,7 @@
       "comparisons": [
         {
           "id": "against_equal_participation",
-          "reference": "S05/control",
+          "reference": "S04/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -555,7 +555,7 @@
           "check": "group_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S05/control"
+            "reference": "S04/control"
           },
           "expected": true,
           "severity": "error",
@@ -567,7 +567,7 @@
           "check": "weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S05/control"
+            "reference": "S04/control"
           },
           "expected": true,
           "severity": "error",
@@ -579,7 +579,7 @@
           "check": "scores_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S05/control"
+            "reference": "S04/control"
           },
           "expected": true,
           "severity": "error",
@@ -591,7 +591,7 @@
           "check": "winner_sets_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S05/control"
+            "reference": "S04/control"
           },
           "expected": true,
           "severity": "error"

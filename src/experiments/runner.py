@@ -10,6 +10,7 @@ import subprocess
 import numpy as np
 
 from contextlib import contextmanager
+from collections import Counter
 from collections.abc import Iterable, Callable
 from copy import deepcopy
 from dataclasses import dataclass
@@ -17,11 +18,14 @@ from itertools import combinations
 from uuid import uuid4
 from pathlib import Path
 from importlib.metadata import PackageNotFoundError, version
+from datetime import datetime, timezone
 
 from src.common.time import timestamp
-from src.experiments.assertions import validate_assertions
+from src.experiments.assertions import validate_assertions, evaluate_declared_assertions
 from src.experiments.models import Experiment, ReusedWeighting, ResolvedExecutionInputs
 from src.experiments.results import RunResult
+from src.experiments.storage import save_run, write_json_atomic, ArtifactWriteError
+from src.experiments.comparison import evaluate_comparisons
 from src.mcdm.enums import (
     WeightingMethod, RankingMethod, MeanMethod, GroupPowerMethod,
     EmptyGroupPolicy, OnExceedancePolicy, PairwisePreference,
@@ -1967,28 +1971,16 @@ def execute_run(
 
     return result
 
-def execute_experiments(runs, output, *, ai_config=None, ai_client=None, preflight=None):
-    if (ai_config is None) != (ai_client is None):
-        raise ValueError(
-            "Provide both ai_config and ai_client, or neither."
-        )
-
-    ai_enabled = ai_client is not None
-    # results = []
-    # for run in runs:
-    #     # Always execute the numerical stages.
-    #     result = execute_run(run)
-    #     results.append(result)
-
-    #     if ai_enabled:
-    #         # Execute AI stages using trace, ai_config, and ai_client.
-    #         ...
-
+def _execute_numerical_runs(
+    runs: Iterable[PreparedRun],
+    *,
+    on_result: Callable[[PreparedRun, RunResult], None] | None = None,
+) -> list[RunResult]:
     runs = list(runs)
     _validate_execution_order(runs)
 
-    completed = {}
-    results = []
+    completed: dict[str, RunResult] = {}
+    results: list[RunResult] = []
 
     for run in runs:
         blocked_by = {
@@ -2019,6 +2011,7 @@ def execute_experiments(runs, output, *, ai_config=None, ai_client=None, preflig
                 "Numerical execution was skipped because required "
                 "dependency results were unavailable."
             )
+
         else:
             dependency_results = {
                 completed[key].case_key: completed[key]
@@ -2042,10 +2035,575 @@ def execute_experiments(runs, output, *, ai_config=None, ai_client=None, preflig
             for key in run.dependencies
         }
 
+        result.execution.setdefault(
+            "assertions_status", "not_run"
+        )
+        result.execution.setdefault(
+            "comparisons_status", "not_run"
+        )
+        result.execution.setdefault(
+            "validation_status", "not_run"
+        )
+
         completed[run.key] = result
         results.append(result)
 
-        # Global experiment ai checker
-        # if ai_enabled is False or run.:
+        # Artifact failures must propagate to the caller.
+        if on_result is not None:
+            on_result(run, result)
 
-    return "", results
+    return results
+
+def finalize_run_validation(
+    run: PreparedRun,
+    result: RunResult,
+) -> None:
+    if result.execution.get("numerical_status") != "completed":
+        raise ValueError(
+            "Cannot finalize validation without completed "
+            "numerical results."
+        )
+
+    result.validate_numerical_complete()
+
+    def index_records(records, label):
+        if not isinstance(records, list):
+            raise ValueError(f"{label} must be a list.")
+
+        indexed = {}
+
+        for record in records:
+            if not isinstance(record, dict):
+                raise ValueError(
+                    f"Each {label} record must be an object."
+                )
+
+            identifier = record.get("id")
+
+            if (
+                not isinstance(identifier, str)
+                or not identifier
+                or identifier in indexed
+            ):
+                raise ValueError(
+                    f"{label} IDs must be unique nonempty strings."
+                )
+
+            indexed[identifier] = record
+
+        return indexed
+
+    declared_assertions = {
+        spec["id"]: spec
+        for spec in run.experiment.expected_assertions
+    }
+
+    assertion_records = index_records(
+        result.assertions,
+        "Assertion",
+    )
+
+    if set(assertion_records) != set(declared_assertions):
+        raise ValueError(
+            "Assertion results do not cover exactly the "
+            "declared assertions."
+        )
+
+    declared_comparisons = {
+        spec["id"]: spec
+        for spec in run.experiment.comparisons
+    }
+
+    if not isinstance(result.comparison, dict):
+        raise ValueError("Missing comparison-stage results.")
+
+    comparison_records = index_records(
+        result.comparison.get("items"),
+        "Comparison",
+    )
+
+    if set(comparison_records) != set(declared_comparisons):
+        raise ValueError(
+            "Comparison results do not cover exactly the "
+            "declared comparisons."
+        )
+
+    allowed_assertion_statuses = {
+        "passed",
+        "failed",
+        "error",
+        "deferred",
+    }
+
+    for record in assertion_records.values():
+        if record.get("status") not in allowed_assertion_statuses:
+            raise ValueError(
+                "An assertion has an invalid result status."
+            )
+
+    required_assertion_failures = [
+        identifier
+        for identifier, record in assertion_records.items()
+        if (
+            declared_assertions[identifier].get(
+                "severity", "error"
+            ) == "error"
+            and record["status"] != "passed"
+        )
+    ]
+
+    comparison_failures = [
+        identifier
+        for identifier, record in comparison_records.items()
+        if record.get("status") != "completed"
+    ]
+
+    warnings = [
+        identifier
+        for identifier, record in assertion_records.items()
+        if (
+            declared_assertions[identifier].get(
+                "severity", "error"
+            ) == "warning"
+            and record["status"] != "passed"
+        )
+    ]
+
+    result.execution["validation_summary"] = {
+        "assertion_status_counts": dict(Counter(
+            record["status"]
+            for record in assertion_records.values()
+        )),
+        "required_assertion_failures": required_assertion_failures,
+        "comparison_failures": comparison_failures,
+        "warnings": warnings,
+    }
+
+    passed = not (
+        required_assertion_failures
+        or comparison_failures
+    )
+
+    result.execution["validation_status"] = (
+        "passed" if passed else "failed"
+    )
+
+    if not passed:
+        identifiers = (
+            required_assertion_failures
+            + comparison_failures
+        )
+
+        result.execution["messages"].append(
+            "Required validation did not pass: "
+            + ", ".join(identifiers)
+        )
+
+    result.set_status("passed" if passed else "failed")
+
+
+def execute_experiments(
+    runs,
+    output,
+    *,
+    ai_config=None,
+    ai_client=None,
+    preflight=None,
+):
+    if any(
+        value is not None
+        for value in (ai_config, ai_client, preflight)
+    ):
+        raise ValueError(
+            "AI execution is not implemented yet."
+        )
+
+    if output is None:
+        raise ValueError("An output directory is required.")
+
+    runs = list(runs)
+
+    if not runs:
+        raise ValueError("No prepared runs were supplied.")
+
+    _validate_execution_order(runs)
+
+    batch_id = (
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        + "_"
+        + uuid4().hex
+    )
+
+    batch_directory = (
+        Path(output).expanduser().resolve() / batch_id
+    )
+
+    try:
+        batch_directory.mkdir(
+            parents=True,
+            exist_ok=False,
+        )
+    except OSError as error:
+        raise ArtifactWriteError(
+            f"Could not create batch directory "
+            f"{batch_directory}: {error}"
+        ) from error
+
+    manifest = {
+        "schema_version": "1.0",
+        "batch_id": batch_id,
+        "status": "running",
+        "phase": "numerical",
+        "created_at": timestamp(),
+        "completed_at": None,
+        "planned_execution_keys": [
+            run.key for run in runs
+        ],
+        "runs": {
+            run.key: {
+                "case_key": run.case_key,
+                "run_id": None,
+                "status": "pending",
+                "directory": None,
+            }
+            for run in runs
+        },
+    }
+
+    manifest_path = batch_directory / "manifest.json"
+
+    def checkpoint(run, result):
+        entry = save_run(
+            batch_directory,
+            run,
+            result,
+        )
+
+        # Update the manifest only after the run files were saved.
+        manifest["runs"][run.key] = entry
+        manifest["updated_at"] = timestamp()
+
+        write_json_atomic(manifest_path, manifest)
+
+    try:
+        write_json_atomic(manifest_path, manifest)
+
+        # Pass 1: calculate and checkpoint every planned execution.
+        results = _execute_numerical_runs(
+            runs,
+            on_result=checkpoint,
+        )
+
+        completed = {
+            result.execution["execution_key"]: result
+            for result in results
+        }
+
+        manifest["phase"] = "validation"
+        write_json_atomic(manifest_path, manifest)
+
+        # Pass 2: all numerical references are now available.
+        for run in runs:
+            result = completed[run.key]
+
+            if (
+                result.execution.get("numerical_status")
+                != "completed"
+            ):
+                continue
+
+            result.execution["validation_status"] = "running"
+            result.execution["validation_started_at"] = timestamp()
+            validation_started = time.perf_counter()
+
+            try:
+                result.execution["assertions_status"] = "running"
+
+                result.assertions = evaluate_declared_assertions(
+                    run,
+                    result,
+                    completed,
+                    stage="calculation",
+                )
+
+                result.execution["comparisons_status"] = "running"
+
+                result.comparison = {
+                    "items": evaluate_comparisons(
+                        run,
+                        result,
+                        completed,
+                    )
+                }
+
+                result.execution["comparisons_status"] = "completed"
+
+                result.assertions.extend(
+                    evaluate_declared_assertions(
+                        run,
+                        result,
+                        completed,
+                        stage="comparison",
+                    )
+                )
+
+                result.execution["assertions_status"] = "completed"
+
+                finalize_run_validation(run, result)
+
+            except Exception as error:
+                for field in (
+                    "assertions_status",
+                    "comparisons_status",
+                    "validation_status",
+                ):
+                    if result.execution.get(field) == "running":
+                        result.execution[field] = "failed"
+
+                result.execution["validation_status"] = "failed"
+                result.execution["messages"].append(
+                    f"Validation error: "
+                    f"{type(error).__name__}: {error}"
+                )
+                result.set_status("failed")
+
+            finally:
+                result.execution["validation_completed_at"] = (
+                    timestamp()
+                )
+                result.execution["validation_duration_seconds"] = (
+                    time.perf_counter() - validation_started
+                )
+
+            # Keep storage errors outside the validation handler.
+            checkpoint(run, result)
+
+        manifest["phase"] = "finished"
+        manifest["status"] = (
+            "completed"
+            if all(
+                result.status == "passed"
+                for result in results
+            )
+            else "failed"
+        )
+        manifest["result_status_counts"] = dict(Counter(
+            result.status
+            for result in results
+        ))
+        manifest["completed_at"] = timestamp()
+
+        write_json_atomic(manifest_path, manifest)
+
+        return batch_directory, results
+
+    except Exception as error:
+        manifest["status"] = "aborted"
+        manifest["completed_at"] = timestamp()
+        manifest["error"] = {
+            "type": type(error).__name__,
+            "message": str(error),
+        }
+
+        # Preserve the original exception if writing the failure
+        # manifest also fails.
+        try:
+            write_json_atomic(manifest_path, manifest)
+        except ArtifactWriteError:
+            pass
+
+        raise
+
+# def execute_experiments(
+#     runs,
+#     output,
+#     *,
+#     ai_config=None,
+#     ai_client=None,
+#     preflight=None
+# ):
+#     if any(
+#         value is not None
+#         for value in (ai_config, ai_client, preflight)
+#     ):
+#         raise ValueError(
+#             "AI execution is not implemented yet."
+#         )
+
+#     if output is None:
+#         raise ValueError("An output directory is required.")
+    
+#     ai_enabled = ai_client is not None
+
+#     runs = list(runs)
+
+#     if not runs:
+#         raise ValueError("No prepared runs were supplied.")
+    
+#     _validate_execution_order(runs)
+
+#     batch_id = (
+#         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+#         + "_"
+#         + uuid4().hex
+#     )
+
+#     batch_directory = Path(output).resolve() / batch_id
+
+#     manifest = {
+#         "schema_version": "1.0",
+#         "batch_id": batch_id,
+#         "status": "running",
+#         "created_at": timestamp(),
+#         "planned_execution_keys": [run.key for run in runs],
+#         "runs": {},
+#     }
+
+#     def checkpoint(run, result):
+#         manifest["runs"][run.key] = save_run(
+#             batch_directory,
+#             run,
+#             result,
+#         )
+
+#         write_json_atomic(
+#             batch_directory / "manifest.json",
+#             manifest,
+#         )
+
+#     write_json_atomic(
+#         batch_directory / "manifest.json",
+#         manifest,
+#     )
+
+#     # Pass 1: numerical calculations and immediate checkpoints.
+#     results = _execute_numerical_runs(
+#         runs,
+#         on_result=checkpoint,
+#     )
+
+#     completed = {
+#         result.execution["execution_key"]: result
+#         for result in results
+#     }
+
+#     # Pass 2: assertions, comparisons, and final validation.
+#     for run in runs:
+#         result = completed[run.key]
+
+#         if result.execution.get("numerical_status") != "completed":
+#             continue
+
+#         try:
+#             result.assertions = evaluate_declared_assertions(
+#                 run,
+#                 result,
+#                 completed,
+#                 stage="calculation",
+#             )
+
+#             result.comparison = {
+#                 "items": evaluate_comparisons(
+#                     run,
+#                     result,
+#                     completed,
+#                 )
+#             }
+
+#             result.assertions.extend(
+#                 evaluate_declared_assertions(
+#                     run,
+#                     result,
+#                     completed,
+#                     stage="comparison",
+#                 )
+#             )
+
+#             finalize_run_validation(result)
+
+#         except Exception as error:
+#             result.execution["validation_status"] = "failed"
+#             result.execution["messages"].append(
+#                 f"Validation error: {type(error).__name__}: {error}"
+#             )
+#             result.set_status("failed")
+
+#         # Keep writing outside the validation exception handler.
+#         checkpoint(run, result)
+
+#     manifest["status"] = (
+#         "completed"
+#         if all(result.status == "passed" for result in results)
+#         else "failed"
+#     )
+#     manifest["completed_at"] = timestamp()
+
+#     write_json_atomic(
+#         batch_directory / "manifest.json",
+#         manifest,
+#     )
+
+#     return batch_directory, results
+
+    # completed = {}
+    # results = []
+
+    # for run in runs:
+    #     blocked_by = {
+    #         key: completed[key]
+    #         for key in run.dependencies
+    #         if not _dependency_is_ready(completed[key])
+    #     }
+
+    #     if blocked_by:
+    #         result = _create_run_result(run)
+    #         result.set_status("blocked")
+
+    #         result.execution["numerical_status"] = "not_run"
+    #         result.execution["dependency_status"] = "blocked"
+
+    #         result.execution["blocked_by"] = {
+    #             key: {
+    #                 "run_id": dependency.run_id,
+    #                 "status": dependency.status,
+    #                 "numerical_status": dependency.execution.get(
+    #                     "numerical_status"
+    #                 ),
+    #             }
+    #             for key, dependency in blocked_by.items()
+    #         }
+
+    #         result.execution["messages"].append(
+    #             "Numerical execution was skipped because required "
+    #             "dependency results were unavailable."
+    #         )
+    #     else:
+    #         dependency_results = {
+    #             completed[key].case_key: completed[key]
+    #             for key in run.dependencies
+    #         }
+
+    #         if len(dependency_results) != len(run.dependencies):
+    #             raise ValueError(
+    #                 "Multiple dependencies resolve to the same case key."
+    #             )
+
+    #         result = execute_run(
+    #             run,
+    #             dependency_results=dependency_results,
+    #         )
+
+    #         result.execution["dependency_status"] = "satisfied"
+
+    #     result.execution["dependency_run_ids"] = {
+    #         key: completed[key].run_id
+    #         for key in run.dependencies
+    #     }
+
+    #     completed[run.key] = result
+    #     results.append(result)
+
+    #     # Global experiment ai checker
+    #     # if ai_enabled is False or run.:
+
+    # return "", results

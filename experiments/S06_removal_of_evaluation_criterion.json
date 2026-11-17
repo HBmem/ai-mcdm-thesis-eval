@@ -1,6 +1,6 @@
 {
   "schema_version": "3.0",
-  "experiment_id": "S07",
+  "experiment_id": "S06",
   "name": "Removal of Evaluation Criterion",
   "description": "Four leave-one-criterion-out ranking conditions reuse baseline weights over the surviving criteria at every scope.",
   "purpose": "Measure sensitivity to criterion omission without deriving a replacement AHP preference model.",
@@ -197,7 +197,7 @@
     }
   },
   "baseline": {
-    "case": "S01/control"
+    "case": "S00/control"
   },
   "assertions": [
     {
@@ -241,12 +241,12 @@
     {
       "case_id": "remove_c1",
       "name": "Remove ranking criterion C1",
-      "description": "Omit C1 from ranking, preserve all original AHP questions and evidence, and renormalize S01 weights over the remaining criteria.",
+      "description": "Omit C1 from ranking, preserve all original AHP questions and evidence, and renormalize S00 weights over the remaining criteria.",
       "purpose": "Isolate the ranking effect of omitting one criterion.",
       "hypothesis": "Each scope applies the restricted and normalized baseline weights; scores and alternative ordering may change.",
       "legacy_variant_id": "S07_C1",
       "result_dependencies": [
-        "S01/control"
+        "S00/control"
       ],
       "operations": [],
       "runtime_operations": [
@@ -261,7 +261,7 @@
       ],
       "reuse": {
         "criterion_weights": {
-          "reference": "S01/control",
+          "reference": "S00/control",
           "scopes": [
             "participant",
             "group",
@@ -273,7 +273,7 @@
       "comparisons": [
         {
           "id": "against_full_criteria",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -306,7 +306,7 @@
           "check": "restricted_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant",
               "group",
@@ -323,7 +323,7 @@
           "check": "preference_evidence_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error"
@@ -333,12 +333,12 @@
     {
       "case_id": "remove_c2",
       "name": "Remove ranking criterion C2",
-      "description": "Omit C2 from ranking, preserve all original AHP questions and evidence, and renormalize S01 weights over the remaining criteria.",
+      "description": "Omit C2 from ranking, preserve all original AHP questions and evidence, and renormalize S00 weights over the remaining criteria.",
       "purpose": "Isolate the ranking effect of omitting one criterion.",
       "hypothesis": "Each scope applies the restricted and normalized baseline weights; scores and alternative ordering may change.",
       "legacy_variant_id": "S07_C2",
       "result_dependencies": [
-        "S01/control"
+        "S00/control"
       ],
       "operations": [],
       "runtime_operations": [
@@ -353,7 +353,7 @@
       ],
       "reuse": {
         "criterion_weights": {
-          "reference": "S01/control",
+          "reference": "S00/control",
           "scopes": [
             "participant",
             "group",
@@ -365,7 +365,7 @@
       "comparisons": [
         {
           "id": "against_full_criteria",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -398,7 +398,7 @@
           "check": "restricted_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant",
               "group",
@@ -415,7 +415,7 @@
           "check": "preference_evidence_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error"
@@ -425,12 +425,12 @@
     {
       "case_id": "remove_c3",
       "name": "Remove ranking criterion C3",
-      "description": "Omit C3 from ranking, preserve all original AHP questions and evidence, and renormalize S01 weights over the remaining criteria.",
+      "description": "Omit C3 from ranking, preserve all original AHP questions and evidence, and renormalize S00 weights over the remaining criteria.",
       "purpose": "Isolate the ranking effect of omitting one criterion.",
       "hypothesis": "Each scope applies the restricted and normalized baseline weights; scores and alternative ordering may change.",
       "legacy_variant_id": "S07_C3",
       "result_dependencies": [
-        "S01/control"
+        "S00/control"
       ],
       "operations": [],
       "runtime_operations": [
@@ -445,7 +445,7 @@
       ],
       "reuse": {
         "criterion_weights": {
-          "reference": "S01/control",
+          "reference": "S00/control",
           "scopes": [
             "participant",
             "group",
@@ -457,7 +457,7 @@
       "comparisons": [
         {
           "id": "against_full_criteria",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -490,7 +490,7 @@
           "check": "restricted_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant",
               "group",
@@ -507,7 +507,7 @@
           "check": "preference_evidence_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error"
@@ -517,12 +517,12 @@
     {
       "case_id": "remove_c4",
       "name": "Remove ranking criterion C4",
-      "description": "Omit C4 from ranking, preserve all original AHP questions and evidence, and renormalize S01 weights over the remaining criteria.",
+      "description": "Omit C4 from ranking, preserve all original AHP questions and evidence, and renormalize S00 weights over the remaining criteria.",
       "purpose": "Isolate the ranking effect of omitting one criterion.",
       "hypothesis": "Each scope applies the restricted and normalized baseline weights; scores and alternative ordering may change.",
       "legacy_variant_id": "S07_C4",
       "result_dependencies": [
-        "S01/control"
+        "S00/control"
       ],
       "operations": [],
       "runtime_operations": [
@@ -537,7 +537,7 @@
       ],
       "reuse": {
         "criterion_weights": {
-          "reference": "S01/control",
+          "reference": "S00/control",
           "scopes": [
             "participant",
             "group",
@@ -549,7 +549,7 @@
       "comparisons": [
         {
           "id": "against_full_criteria",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -582,7 +582,7 @@
           "check": "restricted_weights_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control",
+            "reference": "S00/control",
             "scopes": [
               "participant",
               "group",
@@ -599,7 +599,7 @@
           "check": "preference_evidence_equal",
           "stage": "comparison",
           "parameters": {
-            "reference": "S01/control"
+            "reference": "S00/control"
           },
           "expected": true,
           "severity": "error"

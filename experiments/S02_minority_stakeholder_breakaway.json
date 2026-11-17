@@ -1,9 +1,9 @@
 {
   "schema_version": "3.0",
-  "experiment_id": "S10",
-  "name": "Inconsistent Stakeholder Judgments",
-  "description": "Three inconsistent-judgment interventions distinguish one participant from an entire two-participant group and from all five groups.",
-  "purpose": "Verify consistency diagnostics and retention of inconsistent submissions, and measure changes in collective preferences and ranking.",
+  "experiment_id": "S02",
+  "name": "Minority Stakeholder Breakaway",
+  "description": "Three conditions increase only environmental advocates' preference for environmental benefit while other groups retain neutral judgments.",
+  "purpose": "Measure the sensitivity of collective criterion weights and alternative rankings to a single minority group's preference intensity.",
   "scenario": {
     "id": "transportation_prioritization",
     "description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
@@ -96,31 +96,7 @@
           }
         },
         {
-          "participant_id": "community_residents_p02",
-          "group_id": "community_residents",
-          "judgments": {
-            "q1": 0,
-            "q2": 0,
-            "q3": 0,
-            "q4": 0,
-            "q5": 0,
-            "q6": 0
-          }
-        },
-        {
           "participant_id": "transportation_department_p01",
-          "group_id": "transportation_department",
-          "judgments": {
-            "q1": 0,
-            "q2": 0,
-            "q3": 0,
-            "q4": 0,
-            "q5": 0,
-            "q6": 0
-          }
-        },
-        {
-          "participant_id": "transportation_department_p02",
           "group_id": "transportation_department",
           "judgments": {
             "q1": 0,
@@ -144,18 +120,6 @@
           }
         },
         {
-          "participant_id": "city_government_p02",
-          "group_id": "city_government",
-          "judgments": {
-            "q1": 0,
-            "q2": 0,
-            "q3": 0,
-            "q4": 0,
-            "q5": 0,
-            "q6": 0
-          }
-        },
-        {
           "participant_id": "environmental_advocates_p01",
           "group_id": "environmental_advocates",
           "judgments": {
@@ -168,31 +132,7 @@
           }
         },
         {
-          "participant_id": "environmental_advocates_p02",
-          "group_id": "environmental_advocates",
-          "judgments": {
-            "q1": 0,
-            "q2": 0,
-            "q3": 0,
-            "q4": 0,
-            "q5": 0,
-            "q6": 0
-          }
-        },
-        {
           "participant_id": "business_community_p01",
-          "group_id": "business_community",
-          "judgments": {
-            "q1": 0,
-            "q2": 0,
-            "q3": 0,
-            "q4": 0,
-            "q5": 0,
-            "q6": 0
-          }
-        },
-        {
-          "participant_id": "business_community_p02",
           "group_id": "business_community",
           "judgments": {
             "q1": 0,
@@ -221,23 +161,7 @@
           "q5": 1.0,
           "q6": 1.0
         },
-        "community_residents_p02": {
-          "q1": 1.0,
-          "q2": 1.0,
-          "q3": 1.0,
-          "q4": 1.0,
-          "q5": 1.0,
-          "q6": 1.0
-        },
         "transportation_department_p01": {
-          "q1": 1.0,
-          "q2": 1.0,
-          "q3": 1.0,
-          "q4": 1.0,
-          "q5": 1.0,
-          "q6": 1.0
-        },
-        "transportation_department_p02": {
           "q1": 1.0,
           "q2": 1.0,
           "q3": 1.0,
@@ -253,23 +177,7 @@
           "q5": 1.0,
           "q6": 1.0
         },
-        "city_government_p02": {
-          "q1": 1.0,
-          "q2": 1.0,
-          "q3": 1.0,
-          "q4": 1.0,
-          "q5": 1.0,
-          "q6": 1.0
-        },
         "environmental_advocates_p01": {
-          "q1": 1.0,
-          "q2": 1.0,
-          "q3": 1.0,
-          "q4": 1.0,
-          "q5": 1.0,
-          "q6": 1.0
-        },
-        "environmental_advocates_p02": {
           "q1": 1.0,
           "q2": 1.0,
           "q3": 1.0,
@@ -284,82 +192,42 @@
           "q4": 1.0,
           "q5": 1.0,
           "q6": 1.0
-        },
-        "business_community_p02": {
-          "q1": 1.0,
-          "q2": 1.0,
-          "q3": 1.0,
-          "q4": 1.0,
-          "q5": 1.0,
-          "q6": 1.0
         }
       },
       "operation_original_judgments": {
-        "one_participant": {
-          "participant_judgments": {
-            "community_residents_p01": {
-              "q1": 5.0,
-              "q2": 0.2,
-              "q3": 1.0,
-              "q4": 5.0,
-              "q5": 1.0,
-              "q6": 1.0
-            }
-          }
-        },
-        "one_group": {
+        "environmental_intensity_3": {
           "group_judgments": {
-            "community_residents": {
-              "q1": 5.0,
-              "q2": 0.2,
-              "q3": 1.0,
-              "q4": 5.0,
-              "q5": 1.0,
-              "q6": 1.0
-            }
-          }
-        },
-        "all_groups": {
-          "group_judgments": {
-            "community_residents": {
-              "q1": 5.0,
-              "q2": 0.2,
-              "q3": 1.0,
-              "q4": 5.0,
-              "q5": 1.0,
-              "q6": 1.0
-            },
-            "transportation_department": {
-              "q1": 5.0,
-              "q2": 0.2,
-              "q3": 1.0,
-              "q4": 5.0,
-              "q5": 1.0,
-              "q6": 1.0
-            },
-            "city_government": {
-              "q1": 5.0,
-              "q2": 0.2,
-              "q3": 1.0,
-              "q4": 5.0,
-              "q5": 1.0,
-              "q6": 1.0
-            },
             "environmental_advocates": {
-              "q1": 5.0,
+              "q1": 1.0,
+              "q2": 0.3333333333333333,
+              "q3": 1.0,
+              "q4": 0.3333333333333333,
+              "q5": 1.0,
+              "q6": 3.0
+            }
+          }
+        },
+        "environmental_intensity_5": {
+          "group_judgments": {
+            "environmental_advocates": {
+              "q1": 1.0,
               "q2": 0.2,
               "q3": 1.0,
-              "q4": 5.0,
+              "q4": 0.2,
               "q5": 1.0,
-              "q6": 1.0
-            },
-            "business_community": {
-              "q1": 5.0,
-              "q2": 0.2,
+              "q6": 5.0
+            }
+          }
+        },
+        "environmental_intensity_9": {
+          "group_judgments": {
+            "environmental_advocates": {
+              "q1": 1.0,
+              "q2": 0.1111111111111111,
               "q3": 1.0,
-              "q4": 5.0,
+              "q4": 0.1111111111111111,
               "q5": 1.0,
-              "q6": 1.0
+              "q6": 9.0
             }
           }
         }
@@ -367,7 +235,7 @@
     }
   },
   "baseline": {
-    "case": "S01/control"
+    "case": "S00/control"
   },
   "assertions": [
     {
@@ -409,208 +277,24 @@
   ],
   "cases": [
     {
-      "case_id": "one_participant",
-      "name": "One inconsistent participant",
-      "description": "One inconsistent participant; keep two participants in each group and retain every submitted judgment.",
-      "purpose": "Test the configured retain-and-flag consistency policy at the indicated intervention scope.",
-      "hypothesis": "Exactly 1 participants exceed CR 0.10, all ten submissions are retained, and other numerical effects are measured without imposing a particular winner.",
-      "legacy_variant_id": "S10_A",
-      "result_dependencies": [],
-      "operations": [
-        {
-          "type": "set_participant_judgments",
-          "judgments": {
-            "community_residents_p01": {
-              "q1": 2,
-              "q2": -2,
-              "q3": 0,
-              "q4": 2,
-              "q5": 0,
-              "q6": 0
-            }
-          }
-        }
-      ],
-      "runtime_operations": [],
-      "reuse": {},
-      "comparisons": [
-        {
-          "id": "against_uniform_preferences",
-          "reference": "S01/control",
-          "metrics": [
-            "weight_delta",
-            "score_delta",
-            "winner_changed",
-            "spearman_rho",
-            "kendall_tau_b"
-          ],
-          "alternative_alignment": "require_identical_ids",
-          "criterion_alignment": "require_identical_ids",
-          "tie_atol": 1e-12
-        }
-      ],
-      "assertions": [
-        {
-          "id": "inconsistent_participant_count",
-          "check": "inconsistent_participant_count",
-          "stage": "calculation",
-          "parameters": {},
-          "expected": 1,
-          "severity": "error"
-        },
-        {
-          "id": "all_participants_retained",
-          "check": "participant_counts_equal",
-          "stage": "calculation",
-          "parameters": {
-            "counts": {
-              "community_residents": 2,
-              "transportation_department": 2,
-              "city_government": 2,
-              "environmental_advocates": 2,
-              "business_community": 2
-            }
-          },
-          "expected": true,
-          "severity": "error"
-        },
-        {
-          "id": "inconsistent_inputs_retained",
-          "check": "flagged_participants_retained",
-          "stage": "calculation",
-          "parameters": {},
-          "expected": true,
-          "severity": "error"
-        }
-      ]
-    },
-    {
-      "case_id": "one_group",
-      "name": "One inconsistent group",
-      "description": "One inconsistent group; keep two participants in each group and retain every submitted judgment.",
-      "purpose": "Test the configured retain-and-flag consistency policy at the indicated intervention scope.",
-      "hypothesis": "Exactly 2 participants exceed CR 0.10, all ten submissions are retained, and other numerical effects are measured without imposing a particular winner.",
-      "legacy_variant_id": "S10_B",
+      "case_id": "environmental_intensity_3",
+      "name": "Environmental preference intensity 3",
+      "description": "Apply environmental preference ratio 3 to the environmental advocates group and leave all other judgments and voting powers unchanged.",
+      "purpose": "Measure a minority preference intervention against uniform preferences.",
+      "hypothesis": "The environmental criterion receives greater session weight than under S00; ranking and winner changes are observations rather than required outcomes.",
+      "legacy_variant_id": "S03_A",
       "result_dependencies": [],
       "operations": [
         {
           "type": "set_group_judgments",
           "judgments": {
-            "community_residents": {
-              "q1": 2,
-              "q2": -2,
-              "q3": 0,
-              "q4": 2,
-              "q5": 0,
-              "q6": 0
-            }
-          }
-        }
-      ],
-      "runtime_operations": [],
-      "reuse": {},
-      "comparisons": [
-        {
-          "id": "against_uniform_preferences",
-          "reference": "S01/control",
-          "metrics": [
-            "weight_delta",
-            "score_delta",
-            "winner_changed",
-            "spearman_rho",
-            "kendall_tau_b"
-          ],
-          "alternative_alignment": "require_identical_ids",
-          "criterion_alignment": "require_identical_ids",
-          "tie_atol": 1e-12
-        }
-      ],
-      "assertions": [
-        {
-          "id": "inconsistent_participant_count",
-          "check": "inconsistent_participant_count",
-          "stage": "calculation",
-          "parameters": {},
-          "expected": 2,
-          "severity": "error"
-        },
-        {
-          "id": "all_participants_retained",
-          "check": "participant_counts_equal",
-          "stage": "calculation",
-          "parameters": {
-            "counts": {
-              "community_residents": 2,
-              "transportation_department": 2,
-              "city_government": 2,
-              "environmental_advocates": 2,
-              "business_community": 2
-            }
-          },
-          "expected": true,
-          "severity": "error"
-        },
-        {
-          "id": "inconsistent_inputs_retained",
-          "check": "flagged_participants_retained",
-          "stage": "calculation",
-          "parameters": {},
-          "expected": true,
-          "severity": "error"
-        }
-      ]
-    },
-    {
-      "case_id": "all_groups",
-      "name": "All groups inconsistent",
-      "description": "All groups inconsistent; keep two participants in each group and retain every submitted judgment.",
-      "purpose": "Test the configured retain-and-flag consistency policy at the indicated intervention scope.",
-      "hypothesis": "Exactly 10 participants exceed CR 0.10, all ten submissions are retained, and other numerical effects are measured without imposing a particular winner.",
-      "legacy_variant_id": "S10_C",
-      "result_dependencies": [],
-      "operations": [
-        {
-          "type": "set_group_judgments",
-          "judgments": {
-            "community_residents": {
-              "q1": 2,
-              "q2": -2,
-              "q3": 0,
-              "q4": 2,
-              "q5": 0,
-              "q6": 0
-            },
-            "transportation_department": {
-              "q1": 2,
-              "q2": -2,
-              "q3": 0,
-              "q4": 2,
-              "q5": 0,
-              "q6": 0
-            },
-            "city_government": {
-              "q1": 2,
-              "q2": -2,
-              "q3": 0,
-              "q4": 2,
-              "q5": 0,
-              "q6": 0
-            },
             "environmental_advocates": {
-              "q1": 2,
-              "q2": -2,
+              "q1": 0,
+              "q2": -1,
               "q3": 0,
-              "q4": 2,
+              "q4": -1,
               "q5": 0,
-              "q6": 0
-            },
-            "business_community": {
-              "q1": 2,
-              "q2": -2,
-              "q3": 0,
-              "q4": 2,
-              "q5": 0,
-              "q6": 0
+              "q6": 1
             }
           }
         }
@@ -620,7 +304,7 @@
       "comparisons": [
         {
           "id": "against_uniform_preferences",
-          "reference": "S01/control",
+          "reference": "S00/control",
           "metrics": [
             "weight_delta",
             "score_delta",
@@ -635,34 +319,186 @@
       ],
       "assertions": [
         {
-          "id": "inconsistent_participant_count",
-          "check": "inconsistent_participant_count",
-          "stage": "calculation",
-          "parameters": {},
-          "expected": 10,
-          "severity": "error"
+          "id": "environmental_weight_increased",
+          "check": "criterion_weight_greater_than_reference",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S00/control",
+            "criterion_id": "C3"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
         },
         {
-          "id": "all_participants_retained",
-          "check": "participant_counts_equal",
+          "id": "judgments_match_intervention",
+          "check": "group_judgments_equal",
           "stage": "calculation",
           "parameters": {
-            "counts": {
-              "community_residents": 2,
-              "transportation_department": 2,
-              "city_government": 2,
-              "environmental_advocates": 2,
-              "business_community": 2
+            "expected_judgments": {
+              "environmental_advocates": {
+                "q1": 0,
+                "q2": -1,
+                "q3": 0,
+                "q4": -1,
+                "q5": 0,
+                "q6": 1
+              }
             }
           },
           "expected": true,
           "severity": "error"
+        }
+      ]
+    },
+    {
+      "case_id": "environmental_intensity_5",
+      "name": "Environmental preference intensity 5",
+      "description": "Apply environmental preference ratio 5 to the environmental advocates group and leave all other judgments and voting powers unchanged.",
+      "purpose": "Measure a minority preference intervention against uniform preferences.",
+      "hypothesis": "The environmental criterion receives greater session weight than under S00; ranking and winner changes are observations rather than required outcomes.",
+      "legacy_variant_id": "S03_B",
+      "result_dependencies": [],
+      "operations": [
+        {
+          "type": "set_group_judgments",
+          "judgments": {
+            "environmental_advocates": {
+              "q1": 0,
+              "q2": -2,
+              "q3": 0,
+              "q4": -2,
+              "q5": 0,
+              "q6": 2
+            }
+          }
+        }
+      ],
+      "runtime_operations": [],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S00/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "environmental_weight_increased",
+          "check": "criterion_weight_greater_than_reference",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S00/control",
+            "criterion_id": "C3"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
         },
         {
-          "id": "inconsistent_inputs_retained",
-          "check": "flagged_participants_retained",
+          "id": "judgments_match_intervention",
+          "check": "group_judgments_equal",
           "stage": "calculation",
-          "parameters": {},
+          "parameters": {
+            "expected_judgments": {
+              "environmental_advocates": {
+                "q1": 0,
+                "q2": -2,
+                "q3": 0,
+                "q4": -2,
+                "q5": 0,
+                "q6": 2
+              }
+            }
+          },
+          "expected": true,
+          "severity": "error"
+        }
+      ]
+    },
+    {
+      "case_id": "environmental_intensity_9",
+      "name": "Environmental preference intensity 9",
+      "description": "Apply environmental preference ratio 9 to the environmental advocates group and leave all other judgments and voting powers unchanged.",
+      "purpose": "Measure a minority preference intervention against uniform preferences.",
+      "hypothesis": "The environmental criterion receives greater session weight than under S00; ranking and winner changes are observations rather than required outcomes.",
+      "legacy_variant_id": "S03_C",
+      "result_dependencies": [],
+      "operations": [
+        {
+          "type": "set_group_judgments",
+          "judgments": {
+            "environmental_advocates": {
+              "q1": 0,
+              "q2": -4,
+              "q3": 0,
+              "q4": -4,
+              "q5": 0,
+              "q6": 4
+            }
+          }
+        }
+      ],
+      "runtime_operations": [],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_uniform_preferences",
+          "reference": "S00/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "environmental_weight_increased",
+          "check": "criterion_weight_greater_than_reference",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S00/control",
+            "criterion_id": "C3"
+          },
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "judgments_match_intervention",
+          "check": "group_judgments_equal",
+          "stage": "calculation",
+          "parameters": {
+            "expected_judgments": {
+              "environmental_advocates": {
+                "q1": 0,
+                "q2": -4,
+                "q3": 0,
+                "q4": -4,
+                "q5": 0,
+                "q6": 4
+              }
+            }
+          },
           "expected": true,
           "severity": "error"
         }

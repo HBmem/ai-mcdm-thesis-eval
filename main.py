@@ -6,6 +6,7 @@ from pathlib import Path
 
 from src.experiments.loader import load_experiments
 from src.experiments.runner import prepare_runs, execute_experiments
+from src.experiments.storage import ArtifactWriteError
 from src.ai.config import AIConfig
 from src.ai.preflight import PreflightError, check_model_access
 
@@ -13,6 +14,10 @@ from src.ai.preflight import PreflightError, check_model_access
 ROOT = Path(__file__).resolve().parent
 
 
+# Exit code policy:
+# 0: validation succeeded, or execution completed with all runs passed.
+# 1: a run failed/was blocked, or artifacts could not be written.
+# 2: invalid configuration or an unsupported request such as AI execution.
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Independent deterministic MCDM evaluation")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -77,6 +82,43 @@ def main(argv=None):
         except ValueError as error:
             print(f"Configuration error: {error}", file=sys.stderr)
             return 2
+
+    try:
+        batch_directory, results = execute_experiments(
+            runs,
+            args.output,
+        )
+
+    except ValueError as error:
+        print(
+            f"Configuration error: {error}",
+            file=sys.stderr,
+        )
+        return 2
+
+    except ArtifactWriteError as error:
+        print(
+            f"Artifact error: {error}",
+            file=sys.stderr,
+        )
+        return 1
+
+    for result in results:
+        print(
+            f"{result.execution['execution_key']}: "
+            f"{result.status}"
+        )
+
+        for message in result.execution.get("messages", []):
+            print(f"  {message}")
+
+    print(f"Results: {batch_directory}")
+
+    return (
+        0
+        if all(result.status == "passed" for result in results)
+        else 1
+    )
 
 
 if __name__ == "__main__":
