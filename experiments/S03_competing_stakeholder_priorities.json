@@ -309,7 +309,6 @@
     "save_intermediate_matrices": true,
     "save_per_participant_results": true,
     "save_per_group_results": true,
-    "save_topsis_details": true,
     "save_comparisons": true,
     "save_assertion_results": true,
     "save_provenance": true,

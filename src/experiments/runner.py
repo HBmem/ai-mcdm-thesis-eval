@@ -444,8 +444,16 @@ def _validate_case(experiment):
     defaults = experiment.defaults
     if defaults is None:
         raise ValueError("A loaded case must include its defaults.")
-    if defaults.pipeline != "mcdm" or defaults.ai.enabled is not False:
-        raise ValueError("Only the numerical mcdm pipeline is currently supported.")
+    if defaults.pipeline not in {"mcdm", "ai-mcdm"}:
+        raise ValueError("Unsupported experiment pipeline.")
+
+    expected_ai_enabled = defaults.pipeline == "ai-mcdm"
+
+    if defaults.ai.enabled is not expected_ai_enabled:
+        raise ValueError("Pipeline and defaults.ai.enabled disagree.")
+    if experiment.ai != defaults.ai:
+        raise ValueError("Experiment AI settings and defaults.ai disagree.")
+    
     if isinstance(defaults.repetition, bool) or not isinstance(defaults.repetition, int) or defaults.repetition < 1:
         raise ValueError("repetitions must be a positive integer.")
     if isinstance(defaults.seed, bool) or not isinstance(defaults.seed, int) or defaults.seed < 0:
@@ -612,6 +620,16 @@ def _validate_execution_order(runs):
                     "must appear before its consumer."
                 )
 
+def _validate_execution_request(
+    runs,
+    *,
+    ai_requested: bool,
+) -> None:
+    if ai_requested:
+        raise ValueError(
+            "AI execution is not implemented yet."
+        )
+    
 def _create_run_result(run: PreparedRun) -> RunResult:
     experiment = run.experiment
 
@@ -638,6 +656,8 @@ def _create_run_result(run: PreparedRun) -> RunResult:
             "numerical_duration_seconds": None,
             "numerical_status": "not_run",
             "messages": [],
+            "execution_scope": "numerical",
+            "ai_status": "not_requested",
         },
     )
 

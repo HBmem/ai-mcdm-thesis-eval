@@ -22,7 +22,7 @@ from src.mcdm.models.methods import (
 )
 from src.experiments.models import (
     Experiment, ExperimentResources, ExperimentDefaults, ExperimentProcess,
-    AIConfig, ExperimentExecution, ExperimentStakeholders, ExperimentAI
+    ExperimentExecution, ExperimentStakeholders, ExperimentAI
 )
 from src.experiments.participants import _participants, check_keys
 from src.experiments.variations import resolve_cases
@@ -45,13 +45,74 @@ def _read_json(path: Path) -> dict[str, Any]:
     return data
 
 def _ai(data: dict[str, Any]) -> ExperimentAI:
+    """Validate and retain AI request settings without invoking a provider."""
     if not isinstance(data, dict):
-        raise ValueError("Processing must be an object.")
-    enabled = data["enabled"]
+        raise ValueError("defaults.ai must be an object.")
+    check_keys(data, {
+        "enabled", "repetitions", "layers", "provider", "model", "parameters",
+        "prompt_overrides", "reported_result_interventions",
+    }, "defaults.ai")
+    enabled = data.get("enabled", False)
     if not isinstance(enabled, bool):
-        raise ValueError("enabled must be bool.")
+        raise ValueError("AI enabled must be bool.")
+    repetitions = data.get("repetitions", 1)
+    if isinstance(repetitions, bool) or not isinstance(repetitions, int) or repetitions < 1:
+        raise ValueError("AI repetitions must be a positive integer.")
+    supported_layers = (
+        "data_comprehension", "data_explanation_reporting", "policy_decision_advisory",
+    )
+    layers = data.get("layers", list(supported_layers))
+    if (not isinstance(layers, list)
+            or any(not isinstance(layer, str) or layer not in supported_layers for layer in layers)
+            or len(layers) != len(set(layers)) or (enabled and not layers)):
+        raise ValueError("AI layers must be unique supported names, nonempty when AI is enabled.")
+    for key in ("provider", "model"):
+        value = data.get(key)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise ValueError(f"AI {key} must be a nonempty string or null.")
+    parameters = data.get("parameters", {})
+    if not isinstance(parameters, dict):
+        raise ValueError("AI parameters must be an object.")
+    try:
+        json.dumps(parameters, allow_nan=False)
+    except (TypeError, ValueError) as error:
+        raise ValueError("AI parameters must contain finite JSON values.") from error
+    overrides = data.get("prompt_overrides", {})
+    if not isinstance(overrides, dict) or set(overrides) - set(supported_layers):
+        raise ValueError("AI prompt_overrides must map supported layer names to replacements.")
+    for replacements in overrides.values():
+        if not isinstance(replacements, dict) or set(replacements) - {"system", "task"}:
+            raise ValueError("Prompt replacements support only system and task components.")
+        if any(not isinstance(value, str) or not value.strip() for value in replacements.values()):
+            raise ValueError("Prompt replacements must be nonempty strings.")
+    interventions = data.get("reported_result_interventions", [])
+    if not isinstance(interventions, list):
+        raise ValueError("AI reported_result_interventions must be a list.")
+    for intervention in interventions:
+        if not isinstance(intervention, dict):
+            raise ValueError("Each reported-result intervention must be an object.")
+        check_keys(intervention, {
+            "type", "scope", "alternative_id", "score", "rank", "rerank_remaining",
+        }, "reported-result intervention")
+        if intervention.get("type") != "promote_alternative" or intervention.get("scope") != "session":
+            raise ValueError("Reported-result interventions support only session alternative promotion.")
+        alternative_id = intervention.get("alternative_id")
+        if not isinstance(alternative_id, str) or not alternative_id.strip():
+            raise ValueError("Reported alternative_id must be a nonempty string.")
+        score = intervention.get("score")
+        if (isinstance(score, bool) or not isinstance(score, (int, float))
+                or not math.isfinite(score) or not 0 <= score <= 1):
+            raise ValueError("Reported score must be finite and between zero and one.")
+        if type(intervention.get("rank")) is not int or intervention["rank"] != 1:
+            raise ValueError("Alternative promotion requires rank 1.")
+        if intervention.get("rerank_remaining") is not True:
+            raise ValueError("Alternative promotion requires rerank_remaining=true.")
+    # All nested collections are independent from the parsed source document.
     return ExperimentAI(
-        enabled=enabled
+        enabled=enabled, repetitions=repetitions, layers=deepcopy(layers),
+        provider=data.get("provider"), model=data.get("model"),
+        parameters=deepcopy(parameters), prompt_overrides=deepcopy(overrides),
+        reported_result_interventions=deepcopy(interventions),
     )
 
 def _processing(data: dict[str, Any]) -> ExperimentProcess:
@@ -206,13 +267,22 @@ def load_experiment_json(path: Path | str) -> list[Experiment]:
     seed = raw_defaults["seed"]
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise ValueError("seed must be an integer.")
-    if raw_defaults["pipeline"] != "mcdm" or raw_defaults["ai"].get("enabled") is not False:
-        raise ValueError("This loader currently supports the numerical mcdm pipeline only.")
     process = _processing(raw_defaults["processing"])
     ai = _ai(raw_defaults["ai"])
+    pipeline = raw_defaults["pipeline"]
+    if pipeline not in ("mcdm", "ai-mcdm"):
+        raise ValueError("Unsupported experiment pipeline.")
+    if (pipeline == "ai-mcdm") != ai.enabled:
+        raise ValueError("ai-mcdm requires AI enabled; mcdm requires AI disabled.")
+    output = data.get("output", {})
+    if not isinstance(output, dict):
+        raise ValueError("output must be an object.")
+    for key in ("save_ai_calls", "save_ai_responses"):
+        if key in output and not isinstance(output[key], bool):
+            raise ValueError(f"output.{key} must be bool.")
     defaults = ExperimentDefaults(
-        pipeline=raw_defaults["pipeline"], seed=seed, repetition=repetitions,
-        processing=process, ai=AIConfig(enabled=False),
+        pipeline=pipeline, seed=seed, repetition=repetitions,
+        processing=process, ai=deepcopy(ai),
     )
     resolved_cases = resolve_cases(
         {path: data}, base_inputs={data["experiment_id"]: (participants, groups)},
@@ -246,7 +316,7 @@ def load_experiment_json(path: Path | str) -> list[Experiment]:
             execution=ExperimentExecution(
                 random_seed=seed, consistency_threshold=process.consistency_method.threshold,
             ),
-            ai=ai,
+            ai=deepcopy(ai),
             session=session,
             source_path=str(path),
             variant_id=resolved.key,
@@ -256,7 +326,7 @@ def load_experiment_json(path: Path | str) -> list[Experiment]:
                 participants=deepcopy(resolved.participants),
             ),
             expected_assertions=resolved.assertions,
-            output=deepcopy(data.get("output", {})),
+            output=deepcopy(output),
             defaults=deepcopy(defaults),
             case_metadata=deepcopy(case),
             baseline_case=data["baseline"]["case"],

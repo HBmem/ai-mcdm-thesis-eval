@@ -124,9 +124,39 @@ Save the reported evidence copy with the AI call and preserve its linkage to the
 original numerical result. Saving flags do not decide whether calls execute.
 Never persist credential values. Keep numerical and AI statuses separate.
 
-These are proposed configurations, not implemented AI execution. The current
-loader/planner rejects AI-enabled experiments, AI models preserve only `enabled`,
-and the executor rejects AI calls. Required focused additions are parsing these
-AI fields, three-layer orchestration/default prompts, scoped task replacement,
-provider/model resolution, reported-result copy interventions, and AI persistence.
-The numerical runner's existing input format does not need to be reorganized.
+The loader now validates and preserves all AI fields in the existing ExperimentAI
+class, including independent copies in each case and its defaults. It accepts
+the numerical and AI-enabled pipeline declarations, preserves output flags, and
+does not invoke a provider or apply a reported-result intervention. The planner
+still rejects AI-enabled cases, and the executor still rejects AI calls.
+
+Remaining implementation work:
+
+1. Update planning to accept AI-enabled cases, validate layer order/prerequisites,
+   and distinguish numerical repetitions from independent AI repetitions. Keep
+   numerical and AI statuses/dependency readiness separate.
+2. Resolve provider profiles, model selection, generation parameters, credentials,
+   and preflight access checks. Record effective settings without credentials.
+3. Implement default prompts and the three-layer workflow, including DCL's
+   internal stages, fresh state per AI repetition, and failure propagation within
+   the workflow. S11's cases must not share AI interpretation state.
+4. Assemble allowlisted model context that excludes researcher metadata, and
+   apply only the selected layer's system/task replacements. Preserve default
+   response schemas and protocol guidance; retain raw and validated outputs.
+5. Implement S13's intervention on a separate reported-result copy after genuine
+   numerical validation, check that the target exists and its new score is
+   strictly highest, and update reported ranks/winner summaries consistently.
+6. Extend result/artifact storage for AI repetitions, layers/stages, retries,
+   rendered requests, responses, reported evidence, provenance, and separate
+   validation outcomes. Honor save_ai_calls and save_ai_responses without using
+   those flags to switch execution on or off.
+7. Update run_experiment.py to use the current module paths and planner/executor
+   APIs. Load provider configuration only for AI-enabled execution; keep offline
+   validation and numerical-only runs independent of credentials.
+8. Add integration coverage with injected provider clients for all four AI
+   experiments, retries/failures, output flags, metadata exclusion, and S13's
+   unchanged genuine calculations. AI output evaluation/comparison remains
+   separate from the existing numerical assertion/comparison machinery.
+
+No numerical input-format reorganization is required. These remaining items are
+not implemented by the loader update.

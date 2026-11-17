@@ -47,8 +47,19 @@ class ExperimentProcess:
     consistency_method: ConsistencyMethodConfig
 
 @dataclass
-class AIConfig:
-    enabled: bool
+class ExperimentAI:
+    """Experiment request settings, without provider credentials or live clients."""
+
+    enabled: bool = False
+    repetitions: int = 1
+    layers: list[str] = field(default_factory=lambda: [
+        "data_comprehension", "data_explanation_reporting", "policy_decision_advisory",
+    ])
+    provider: str | None = None
+    model: str | None = None
+    parameters: dict[str, Any] = field(default_factory=dict)
+    prompt_overrides: dict[str, dict[str, str]] = field(default_factory=dict)
+    reported_result_interventions: list[dict[str, Any]] = field(default_factory=list)
 
 @dataclass
 class ExperimentDefaults:
@@ -56,7 +67,7 @@ class ExperimentDefaults:
     seed: int
     repetition: int
     processing: ExperimentProcess
-    ai: AIConfig
+    ai: ExperimentAI
 
 @dataclass
 class AddedAlternative:
@@ -102,10 +113,6 @@ class ExperimentExecution:
     variants: bool = False
     variations: list[ExecutionVariation] = field(default_factory=list)
     consistency_threshold: float = 0.10
-
-@dataclass
-class ExperimentAI:
-    enabled: bool = False
 
 @dataclass
 class Experiment:

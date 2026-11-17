@@ -35,8 +35,8 @@ def labeled(values, rows, columns):
     """Package matrix values with row and column labels for result serialization."""
     return {
         "row_ids": list(rows),
-        "column_id": list(columns),
-        "values": np.asarray(values).tolist
+        "column_ids": list(columns),
+        "values": np.asarray(values).tolist(),
     }
 
 def validate_matrix(matrix):

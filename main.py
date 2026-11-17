@@ -3,6 +3,7 @@ import argparse
 import sys
 
 from pathlib import Path
+from contextlib import ExitStack
 
 from src.experiments.loader import load_experiments
 from src.experiments.runner import prepare_runs, execute_experiments
@@ -49,76 +50,124 @@ def main(argv=None):
         print(f"Validated {len(runs)} runs: " + ", ".join(c.key for c in runs))
         return 0
 
-    if args.ai:
-        try:
-            # Configure AI connection
-            ai_config = AIConfig.from_env(ROOT / ".env")
+    try:
+        with ExitStack() as stack:
+            execution_options = {}
 
-            # Check AI connection
-            with ai_config.client() as client:
-                print("Checking AI key and model access...")
-                preflight = check_model_access(ai_config, client)
-                print("AI access check passed.")
+            if args.ai:
+                config = AIConfig.from_env(ROOT / ".env")
+                client = stack.enter_context(config.client())
 
-            # TODO: Execute numerical and AI stages here
-            # Pass ai_config and client to your executor.
-            # Keep model calls inside this context.
-            path, results = execute_experiments(
+                preflight = check_model_access(config, client)
+
+                execution_options = {
+                    "ai_config": config,
+                    "ai_client": client,
+                    "preflight": preflight,
+                }
+
+            batch_directory, results = execute_experiments(
                 runs,
                 args.output,
-                ai_config=ai_config,
-                ai_client=client,
-                preflight=preflight
+                **execution_options,
             )
-        except ValueError as error:
-            print(f"Configuration error: {error}", file=sys.stderr)
-            return 2
-        except PreflightError as error:
-            print(f"AI startup check failed: {error}", file=sys.stderr)
-            return error.exit_code
-    else:
-        try:
-            path, results = execute_experiments(runs, args.output)
-        except ValueError as error:
-            print(f"Configuration error: {error}", file=sys.stderr)
-            return 2
 
-    try:
-        batch_directory, results = execute_experiments(
-            runs,
-            args.output,
-        )
+            for result in results:
+                print(f"{result.execution['execution_key']}: {result.status}")
+    
+                for message in result.execution.get("messages", []):
+                    print(f"  {message}")
+    
+            print(f"Results: {batch_directory}")
+    
+            return (
+                0
+                if all(result.status == "passed" for result in results)
+                else 1
+            )
+
+    except PreflightError as error:
+        print(f"AI startup check failed: {error}", file=sys.stderr)
+        return error.exit_code
 
     except ValueError as error:
-        print(
-            f"Configuration error: {error}",
-            file=sys.stderr,
-        )
+        print(f"Configuration error: {error}", file=sys.stderr)
         return 2
 
     except ArtifactWriteError as error:
-        print(
-            f"Artifact error: {error}",
-            file=sys.stderr,
-        )
+        print(f"Artifact error: {error}", file=sys.stderr)
         return 1
+    
+    # if args.ai:
+    #     try:
+    #         # Configure AI connection
+    #         ai_config = AIConfig.from_env(ROOT / ".env")
 
-    for result in results:
-        print(
-            f"{result.execution['execution_key']}: "
-            f"{result.status}"
-        )
+    #         # Check AI connection
+    #         with ai_config.client() as client:
+    #             print("Checking AI key and model access...")
+    #             preflight = check_model_access(ai_config, client)
+    #             print("AI access check passed.")
 
-        for message in result.execution.get("messages", []):
-            print(f"  {message}")
+    #             batch_directory, results = execute_experiments(
+    #                 runs,
+    #                 args.output,
+    #                 ai_config=ai_config,
+    #                 ai_client=client,
+    #                 preflight=preflight
+    #             )
 
-    print(f"Results: {batch_directory}")
+    #     except ValueError as error:
+    #         print(f"Configuration error: {error}", file=sys.stderr)
+    #         return 2
+    #     except PreflightError as error:
+    #         print(f"AI startup check failed: {error}", file=sys.stderr)
+    #         return error.exit_code
+    #     except ArtifactWriteError as error:
+    #         print(f"Artifact error: {error}",file=sys.stderr)
+    #         return 1
+    #     for result in results:
+    #         print(f"{result.execution['execution_key']}: {result.status}")
 
-    return (
-        0
-        if all(result.status == "passed" for result in results)
-        else 1
-    )
+    #         for message in result.execution.get("messages", []):
+    #             print(f"  {message}")
+
+    #     print(f"Results: {batch_directory}")
+
+    #     return (
+    #         0
+    #         if all(result.status == "passed" for result in results)
+    #         else 1
+    #     )
+    
+    # else:
+    #     try:
+    #         batch_directory, results = execute_experiments(
+    #             runs,
+    #             args.output,
+    #         )
+
+    #     except ValueError as error:
+    #         print(f"Configuration error: {error}", file=sys.stderr)
+    #         return 2
+
+    #     except ArtifactWriteError as error:
+    #         print(f"Artifact error: {error}",file=sys.stderr)
+    #         return 1
+
+    #     for result in results:
+    #         print(f"{result.execution['execution_key']}: {result.status}")
+
+    #         for message in result.execution.get("messages", []):
+    #             print(f"  {message}")
+
+    #     print(f"Results: {batch_directory}")
+
+    #     return (
+    #         0
+    #         if all(result.status == "passed" for result in results)
+    #         else 1
+    #     )
 
 
 if __name__ == "__main__":

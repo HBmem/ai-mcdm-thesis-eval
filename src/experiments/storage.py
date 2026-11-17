@@ -9,6 +9,35 @@ from pathlib import Path
 from uuid import uuid4
 from pydantic import BaseModel
 
+
+OUTPUT_FLAG_DEFAULTS = {
+    "save_resolved_inputs": True,
+    "save_intermediate_matrices": True,
+    "save_per_participant_results": True,
+    "save_per_group_results": True,
+    "save_provenance": True,
+    "save_assertion_results": True,
+    "save_comparisons": True,
+    "save_ai_calls": False,
+    "save_ai_responses": False,
+}
+
+
+def output_flags(settings):
+    flags = {}
+
+    for name, default in OUTPUT_FLAG_DEFAULTS.items():
+        value = settings.get(name, default)
+
+        if not isinstance(value, bool):
+            raise ValueError(
+                f"output.{name} must be a boolean."
+            )
+
+        flags[name] = value
+
+    return flags
+
 class ArtifactWriteError(RuntimeError):
     pass
 
@@ -111,28 +140,52 @@ def save_run(batch_directory, run, result):
         / directory_component(result.run_id)
     )
 
-    write_json_atomic(
-        directory / "inputs/requested.json",
-        run.experiment.to_dict(),
-    )
-    write_json_atomic(
-        directory / "inputs/resolved.json",
-        result.inputs,
-    )
+    flags = output_flags(run.experiment.output)
+
+    if flags["save_resolved_inputs"]:
+        write_json_atomic(
+            directory / "inputs/requested.json",
+            run.experiment.to_dict(),
+        )
+        write_json_atomic(
+            directory / "inputs/resolved.json",
+            result.inputs,
+        )
+
     write_json_atomic(
         directory / "metadata/execution.json",
         result.execution,
     )
-    write_json_atomic(
-        directory / "metadata/provenance.json",
-        result.provenance,
-    )
+
+    if flags["save_provenance"]:
+        write_json_atomic(
+            directory / "metadata/provenance.json",
+            result.provenance,
+        )
+    # write_json_atomic(
+    #     directory / "inputs/requested.json",
+    #     run.experiment.to_dict(),
+    # )
+    # write_json_atomic(
+    #     directory / "inputs/resolved.json",
+    #     result.inputs,
+    # )
+    # write_json_atomic(
+    #     directory / "metadata/execution.json",
+    #     result.execution,
+    # )
+    # write_json_atomic(
+    #     directory / "metadata/provenance.json",
+    #     result.provenance,
+    # )
 
     def save_entity(path, calculation):
-        write_json_atomic(
-            path / "pairwise_matrix.json",
-            calculation.pairwise_matrix,
-        )
+        if flags["save_intermediate_matrices"]:
+            write_json_atomic(
+                path / "pairwise_matrix.json",
+                calculation.pairwise_matrix,
+            )
+
         write_json_atomic(
             path / "weighting.json",
             calculation.weighting,
@@ -146,15 +199,20 @@ def save_run(batch_directory, run, result):
             calculation.metadata,
         )
 
-    for scope, calculations in (
-        ("participants", result.mcdm.participants),
-        ("groups", result.mcdm.groups),
-    ):
-        for calculation in calculations:
+    if flags["save_per_participant_results"]:
+        for calculation in result.mcdm.participants:
             save_entity(
                 directory
-                / "mcdm"
-                / scope
+                / "mcdm/participants"
+                / directory_component(calculation.entity_id),
+                calculation,
+            )
+
+    if flags["save_per_group_results"]:
+        for calculation in result.mcdm.groups:
+            save_entity(
+                directory
+                / "mcdm/groups"
                 / directory_component(calculation.entity_id),
                 calculation,
             )
@@ -165,14 +223,17 @@ def save_run(batch_directory, run, result):
             result.mcdm.session,
         )
 
-    write_json_atomic(
-        directory / "assertions/results.json",
-        result.assertions,
-    )
-    write_json_atomic(
-        directory / "comparisons/results.json",
-        result.comparison,
-    )
+    if flags["save_assertion_results"]:
+        write_json_atomic(
+            directory / "assertions/results.json",
+            result.assertions,
+        )
+
+    if flags["save_comparisons"]:
+        write_json_atomic(
+            directory / "comparisons/results.json",
+            result.comparison,
+        )
 
     # Write the authoritative snapshot after its derived files.
     write_json_atomic(directory / "result.json", result)
