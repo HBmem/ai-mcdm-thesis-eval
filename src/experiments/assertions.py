@@ -3,7 +3,7 @@ import json
 import math
 
 
-# Accepted parameter sets for the checks declared by S01, S05, and S06. This registry
+# Accepted parameter sets for the checks declared by S01–S10. This registry
 # describes contracts, not executable evaluators. Add both when extending checks.
 ASSERTION_PARAMETERS = {
     "normalized_weights": (frozenset(),),
@@ -23,6 +23,19 @@ ASSERTION_PARAMETERS = {
     "winner_sets_equal": (frozenset({"reference"}),),
     "participant_judgments_equal": (frozenset({"reference"}),),
     "alternative_ids_equal_reference_without_winners": (frozenset({"reference", "tie_atol"}),),
+    "alternative_ids_equal": (frozenset({"reference"}),),
+    "alternative_score_not_greater": (frozenset({"alternative", "reference_alternative"}),),
+    "computed_results_match_independent_reference_per_variant": (frozenset(),),
+    "criterion_weight_greater_than_reference": (frozenset({"reference", "criterion_id"}),),
+    "flagged_participants_retained": (frozenset(),),
+    "group_judgments_equal": (frozenset({"expected_judgments"}),),
+    "inconsistent_inputs_retained_and_flagged": (frozenset(),),
+    "inconsistent_participant_count": (frozenset(),),
+    "preference_evidence_equal": (frozenset({"reference"}),),
+    "ranking_criterion_ids_equal": (frozenset({"expected_ids"}),),
+    "restricted_weights_equal": (frozenset({"reference", "scopes"}),),
+    "scoped_scores_equal": (frozenset({"reference", "scopes"}),),
+    "scoped_weights_equal": (frozenset({"reference", "scopes"}),),
 }
 
 

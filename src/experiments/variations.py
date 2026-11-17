@@ -9,6 +9,7 @@ from typing import Any
 from src.experiments.models import ExperimentParticipant
 from src.experiments.participants import (
     _participants, unique as _unique, check_keys as _keys, resize_group,
+    parse_preference, validate_participants,
 )
 from src.mcdm.models.domain import StakeholderGroup
 
@@ -28,14 +29,15 @@ class ResolvedCase:
 
 
 def resolve_cases(documents, *, base_inputs=None, validate_references=True):
-    """Resolve S01/S05 stakeholder variations without performing calculations.
+    """Resolve stakeholder variations without performing calculations.
 
     documents maps JSON file paths to their parsed objects. Register every case
     before resolving inputs, so file/case order does not affect inheritance.
-    This deliberately supports only local input_from and the two S05 operations.
+    Input inheritance is local; stakeholder operations run in declaration order.
+    Result-dependent runtime_operations remain the executor's responsibility.
     Comparisons and assertion references may cross experiment boundaries.
     """
-    registry, bases = {}, {}
+    registry, bases, question_ids = {}, {}, {}
     experiment_ids = set()
     for source, document in documents.items():
         source = Path(source).resolve()
@@ -45,6 +47,11 @@ def resolve_cases(documents, *, base_inputs=None, validate_references=True):
         if not isinstance(eid, str) or not eid or "/" in eid or eid in experiment_ids:
             raise ValueError("Experiment IDs must be unique nonempty names without '/'.")
         experiment_ids.add(eid)
+        criteria_path = source.parent / document["resources"]["criteria"]
+        criteria = json.loads(criteria_path.read_text(encoding="utf-8"))
+        question_ids[eid] = {
+            q["question_id"] for q in criteria["pairwise_question_order"]
+        }
         if base_inputs is not None:
             participants, groups = deepcopy(base_inputs[eid])
         else:
@@ -53,8 +60,6 @@ def resolve_cases(documents, *, base_inputs=None, validate_references=True):
                 raise ValueError("Only pairwise_preference judgment encoding is supported.")
             groups = [StakeholderGroup(**g) for g in stakeholders["stakeholder_groups"]]
             _unique((g.id for g in groups), "group IDs")
-            criteria_path = source.parent / document["resources"]["criteria"]
-            criteria = json.loads(criteria_path.read_text(encoding="utf-8"))
             config = stakeholders["participants"]
             _keys(config, {"predefined", "generators", "combine", "on_id_collision"},
                   "participant configuration")
@@ -65,7 +70,7 @@ def resolve_cases(documents, *, base_inputs=None, validate_references=True):
             participants = _participants(
                 config.get("predefined", []), config.get("generators", []), eid,
                 group_ids={g.id for g in groups},
-                question_ids={q["question_id"] for q in criteria["pairwise_question_order"]},
+                question_ids=question_ids[eid],
             )
         bases[eid] = (participants, groups)
         if not isinstance(document["cases"], list) or not document["cases"]:
@@ -111,7 +116,12 @@ def resolve_cases(documents, *, base_inputs=None, validate_references=True):
             participants, groups = deepcopy((parent.participants, parent.groups))
         else:
             participants, groups = deepcopy(bases[eid])
-        for operation in case.get("operations", []):
+        operations = case.get("operations", [])
+        if not isinstance(operations, list):
+            raise ValueError("Case operations must be a list.")
+        for operation in operations:
+            if not isinstance(operation, dict) or not isinstance(operation.get("type"), str):
+                raise ValueError("Each case operation must be an object with a string type.")
             if operation["type"] == "resize_group":
                 if operation["group_id"] not in {g.id for g in groups}:
                     raise ValueError("resize_group references an unknown group.")
@@ -129,11 +139,34 @@ def resolve_cases(documents, *, base_inputs=None, validate_references=True):
                 groups = [StakeholderGroup.model_validate({
                     **g.model_dump(), "voting_power": powers.get(g.id, g.voting_power)
                 }) for g in groups]
+            elif operation["type"] in {"set_group_judgments", "set_participant_judgments"}:
+                kind = operation["type"]
+                _keys(operation, {"type", "judgments"}, kind)
+                judgments = operation.get("judgments")
+                by_group = kind == "set_group_judgments"
+                target_ids = ({g.id for g in groups} if by_group
+                              else {p.participant_id for p in participants})
+                if not isinstance(judgments, dict) or set(judgments) - target_ids:
+                    raise ValueError(f"{kind}: judgments must map known target IDs to responses.")
+                replacements = {}
+                for target, responses in judgments.items():
+                    if not isinstance(responses, dict) or set(responses) != question_ids[eid]:
+                        raise ValueError(f"{kind}: judgments must cover every question exactly once.")
+                    replacements[target] = {
+                        qid: parse_preference(value) for qid, value in responses.items()
+                    }
+                for participant in participants:
+                    target = participant.group_id if by_group else participant.participant_id
+                    if target in replacements:
+                        participant.judgments = deepcopy(replacements[target])
             else:
                 raise ValueError(f"Unsupported case operation {operation['type']!r}.")
         if not participants:
             raise ValueError(f"{key}: at least one participant is required.")
         _unique((p.participant_id for p in participants), "resolved participant IDs")
+        validate_participants(
+            participants, group_ids={g.id for g in groups}, question_ids=question_ids[eid],
+        )
         result = ResolvedCase(key, source, deepcopy(document), deepcopy(case), participants, groups)
         _unique((a["id"] for a in result.assertions), f"assertion IDs in {key}")
         resolved[key] = result

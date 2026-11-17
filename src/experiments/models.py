@@ -168,4 +168,6 @@ class ResolvedExecutionInputs:
     experiment: Experiment
     reused_weightings: dict[tuple[str, str], ReusedWeighting] = field(default_factory=dict)
     metadata: dict = field(default_factory=dict)
-    
+    # Ranking dimensions and interventions are separate from original AHP evidence.
+    ranking_criterion_ids: list[str] = field(default_factory=list)
+    criterion_weight_overrides: dict[str, dict[str, float]] = field(default_factory=dict)

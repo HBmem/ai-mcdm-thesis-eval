@@ -27,6 +27,7 @@ from src.mcdm.enums import (
 )
 from src.mcdm.service import MCDMService
 from src.mcdm.models.computation import EntityCalculation
+from src.mcdm.models.domain import Alternative, CriterionValue
 from src.mcdm.reference import DERIVATIONS
 
 
@@ -37,7 +38,7 @@ VALID_RANKING_METHODS = [RankingMethod.TOPSIS]
 
 ALLOWED_POLICIES = {
     "alternative_alignment": {"require_identical_ids", "common_ids"},
-    "criterion_alignment": {"require_identical_ids"},
+    "criterion_alignment": {"require_identical_ids", "common_ids"},
 }
 ALLOWED_SCOPES = {"participant", "group", "session"}
 
@@ -190,6 +191,8 @@ def _references(experiment, assertion_references):
                 raise ValueError(
                     f"Unsupported comparison {field} policy: {policy!r}."
                 )
+        if not isinstance(comparison.get("rerank_common_alternatives", False), bool):
+            raise ValueError("Comparison rerank_common_alternatives must be a boolean.")
         references.append(comparison.get("reference"))
     references.extend(assertion_references)
     if any(not isinstance(ref, str) or not ref for ref in references):
@@ -339,6 +342,8 @@ def calculate_entity(
     processing,
     metadata=None,
     reused_weighting: ReusedWeighting | None = None,
+    ranking_criterion_ids=None,
+    criterion_weight_override=None,
 ) -> EntityCalculation:
     metadata = {} if metadata is None else dict(metadata)
 
@@ -373,10 +378,41 @@ def calculate_entity(
             "source_case_key": reused_weighting.source_case_key,
         }
 
+    # Keep the full AHP weighting and consistency diagnostics as evidence.
+    # Only the TOPSIS inputs are restricted or overridden by ranking operations.
+    ranking_criterion_ids = (
+        [c.id for c in session.criteria]
+        if ranking_criterion_ids is None else ranking_criterion_ids
+    )
+    positions = {c.id: i for i, c in enumerate(session.criteria)}
+    applied = ({item.criterion_id: item.weight for item in weighting.criterion_weights}
+               if criterion_weight_override is None else criterion_weight_override)
+    values = np.array([applied[cid] for cid in ranking_criterion_ids], dtype=float)
+    if not np.all(np.isfinite(values)) or np.any(values < 0) or values.sum() <= 0:
+        raise ValueError("Ranking weights must be finite, nonnegative, with positive retained mass.")
+    values /= values.sum()
+    ranking_weighting = weighting.model_copy(deep=True)
+    ranking_weighting.criterion_weights = [
+        item.model_copy(update={"weight": float(value)})
+        for cid, value in zip(ranking_criterion_ids, values)
+        for item in weighting.criterion_weights if item.criterion_id == cid
+    ]
+    # This projection is used only by the ranking service; the original session
+    # and its full pairwise question/response set remain unchanged.
+    ranking_view = session.model_copy(update={
+        "criteria": [session.criteria[positions[cid]] for cid in ranking_criterion_ids],
+    })
+    metadata["ranking_criterion_ids"] = list(ranking_criterion_ids)
+    metadata["applied_criterion_weights"] = dict(zip(ranking_criterion_ids, values.tolist()))
+    if criterion_weight_override is not None:
+        metadata["ranking_weight_source"] = "explicit"
+    elif ranking_criterion_ids != list(positions):
+        metadata["ranking_weight_source"] = "restricted_and_renormalized"
+
     ranking = MCDMService.generate_ranking(
-        session=session,
-        decision_matrix=decision_matrix,
-        weighting=weighting,
+        session=ranking_view,
+        decision_matrix=decision_matrix[:, [positions[cid] for cid in ranking_criterion_ids]],
+        weighting=ranking_weighting,
         config=processing.ranking_method,
     )
 
@@ -448,7 +484,7 @@ def prepare_runs(
                 )
 
                 # Strict comparisons require the same entities on both sides.
-                # common_ids comparisons may use different alternative sets;
+                # common_ids comparisons may use different entity sets;
                 # their intersection is determined during comparison execution.
                 if policy == "require_identical_ids" and own_ids != other_ids:
                     raise ValueError(
@@ -632,16 +668,27 @@ def resolve_execution_inputs(
     *,
     dependency_results: dict[str, RunResult] | None = None,
 ) -> ResolvedExecutionInputs:
+    """Resolve one independent attempt's runtime interventions and weight reuse.
+
+    Operations run in JSON order on a deep copy. Result-consuming operations
+    require declared, usable dependency results. Ranking-only interventions do
+    not rewrite AHP questions, judgments, matrices, or consistency evidence;
+    the executor applies their separate ranking dimensions and scoped weights.
+    Metadata records each intervention and any reused result's provenance.
+    """
     dependencies = dependency_results or {}
     experiment = deepcopy(run.experiment)
 
     resolved = ResolvedExecutionInputs(
         experiment=experiment,
         metadata={"runtime_operations": []},
+        ranking_criterion_ids=[c.id for c in experiment.session.criteria],
     )
 
     def get_dependency(reference):
-        if reference not in dependencies:
+        if (not isinstance(reference, str)
+                or reference not in experiment.case_metadata.get("result_dependencies", [])
+                or reference not in dependencies):
             raise ValueError(
                 f"{run.key}: reference {reference!r} must be "
                 "a declared, supplied result dependency."
@@ -659,6 +706,25 @@ def resolve_execution_inputs(
 
         return source
 
+    def validate_ids(values, known, label):
+        """Reject ambiguous, repeated, or unknown removal/selection IDs."""
+        if (not isinstance(values, list) or not values
+                or any(not isinstance(value, str) for value in values)
+                or len(values) != len(set(values)) or not set(values) <= set(known)):
+            raise ValueError(f"{label} must contain unique known IDs.")
+
+    def validate_alternatives(alternatives):
+        """Check the complete preference dimension set before changing inputs."""
+        ids = [a.id for a in alternatives]
+        criteria = {c.id for c in experiment.session.criteria}
+        if not alternatives or len(ids) != len(set(ids)):
+            raise ValueError("Runtime alternatives must be nonempty with unique IDs.")
+        for alternative in alternatives:
+            values = alternative.criterion_values
+            if (len(values) != len(criteria) or {v.criterion_id for v in values} != criteria
+                    or any(not math.isfinite(v.value) for v in values)):
+                raise ValueError("Runtime alternatives need finite values for every criterion.")
+
     # Resolve runtime operations in their declared order.
     operations = experiment.case_metadata.get(
         "runtime_operations", []
@@ -671,12 +737,125 @@ def resolve_execution_inputs(
         if not isinstance(operation, dict):
             raise ValueError("Each runtime operation must be an object.")
 
-        if operation.get("type") != "remove_winner":
+        kind = operation.get("type")
+        if kind == "remove_criteria":
+            # S07 omits ranking columns only. Original preferences and their
+            # consistency diagnostics remain available in the saved inputs.
+            if set(operation) - {"type", "criterion_ids", "target", "preserve_preference_evidence"}:
+                raise ValueError("Unsupported remove_criteria fields.")
+            if (operation.get("target") != "ranking"
+                    or operation.get("preserve_preference_evidence") is not True):
+                raise ValueError("Criterion removal must preserve preference evidence and target ranking.")
+            removed = operation.get("criterion_ids")
+            validate_ids(removed, resolved.ranking_criterion_ids, "criterion_ids")
+            retained = [cid for cid in resolved.ranking_criterion_ids if cid not in removed]
+            if not retained:
+                raise ValueError("Criterion removal must leave at least one ranking criterion.")
+            resolved.ranking_criterion_ids = retained
+            resolved.metadata["runtime_operations"].append({
+                "type": kind, "removed_criterion_ids": list(removed),
+                "remaining_criterion_ids": list(retained), "preserve_preference_evidence": True,
+            })
+            continue
+
+        if kind == "set_criterion_weights":
+            # S08 supplies applied TOPSIS weights at selected scopes without
+            # replacing any calculated AHP weights or consistency evidence.
+            if set(operation) - {"type", "scopes", "weights"}:
+                raise ValueError("Unsupported set_criterion_weights fields.")
+            selected_scopes = operation.get("scopes")
+            validate_ids(selected_scopes, ALLOWED_SCOPES, "Weight override scopes")
+            weights = operation.get("weights")
+            if (not isinstance(weights, dict) or set(weights) != set(resolved.ranking_criterion_ids)
+                    or any(not _nonnegative_number(value) for value in weights.values())
+                    or not math.isclose(sum(weights.values()), 1.0, abs_tol=1e-10, rel_tol=0)):
+                raise ValueError("Explicit weights must cover ranking criteria and sum to one.")
+            for scope in selected_scopes:
+                resolved.criterion_weight_overrides[scope] = deepcopy(weights)
+            resolved.metadata["runtime_operations"].append({
+                "type": kind, "scopes": list(selected_scopes), "weights": deepcopy(weights),
+            })
+            continue
+
+        if kind == "add_alternatives":
+            # S09 adds complete performance rows; it does not change criteria,
+            # stakeholder judgments, or any existing alternative's values.
+            if set(operation) - {"type", "alternatives"}:
+                raise ValueError("Unsupported add_alternatives fields.")
+            additions = operation.get("alternatives")
+            if not isinstance(additions, list) or not additions:
+                raise ValueError("add_alternatives requires a nonempty alternatives list.")
+            parsed = []
+            criteria = {c.id for c in experiment.session.criteria}
+            for item in additions:
+                if not isinstance(item, dict) or set(item) - {"id", "name", "description", "values"}:
+                    raise ValueError("Invalid added alternative fields.")
+                values = item.get("values")
+                if (not isinstance(values, dict) or set(values) != criteria
+                        or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                               or not math.isfinite(v) for v in values.values())):
+                    raise ValueError("Added alternatives need finite values for every criterion.")
+                if any(not isinstance(item.get(k), str) or not item[k] for k in ("id", "name")):
+                    raise ValueError("Added alternatives require nonempty IDs and names.")
+                parsed.append(Alternative(
+                    id=item["id"], name=item["name"], description=item.get("description", ""),
+                    criterion_values=[CriterionValue(criterion_id=cid, value=value)
+                                      for cid, value in values.items()],
+                ))
+            combined = experiment.session.alternatives + parsed
+            validate_alternatives(combined)
+            experiment.session.alternatives = combined
+            resolved.metadata["runtime_operations"].append({
+                "type": kind, "added_alternative_ids": [a.id for a in parsed],
+            })
+            continue
+
+        if kind == "inherit_alternatives":
+            # Copy the dependency's resolved rows (including earlier additions),
+            # rather than reloading its original resource file.
+            if set(operation) - {"type", "reference"}:
+                raise ValueError("Unsupported inherit_alternatives fields.")
+            source = get_dependency(operation.get("reference"))
+            source_criteria = {c["id"]: c for c in source.inputs["session"]["criteria"]}
+            current_criteria = {c.id: c.model_dump(mode="json") for c in experiment.session.criteria}
+            if source_criteria != current_criteria:
+                raise ValueError("Inherited alternatives require identical criterion definitions.")
+            inherited = [Alternative.model_validate(deepcopy(a))
+                         for a in source.inputs["session"]["alternatives"]]
+            validate_alternatives(inherited)
+            experiment.session.alternatives = inherited
+            resolved.metadata["runtime_operations"].append({
+                "type": kind, "reference": source.case_key, "source_run_id": source.run_id,
+                "inherited_alternative_ids": [a.id for a in inherited],
+            })
+            continue
+
+        if kind == "remove_alternatives":
+            # Remove named rows from the current, already transformed set.
+            # This makes S09's add -> inherit -> remove sequence reversible.
+            if set(operation) - {"type", "alternative_ids"}:
+                raise ValueError("Unsupported remove_alternatives fields.")
+            removed = operation.get("alternative_ids")
+            validate_ids(removed, [a.id for a in experiment.session.alternatives], "alternative_ids")
+            remaining = [a for a in experiment.session.alternatives if a.id not in removed]
+            validate_alternatives(remaining)
+            experiment.session.alternatives = remaining
+            resolved.metadata["runtime_operations"].append({
+                "type": kind, "removed_alternative_ids": list(removed),
+                "remaining_alternative_ids": [a.id for a in remaining],
+            })
+            continue
+
+        if kind != "remove_winner":
             raise NotImplementedError(
                 f"Runtime operation {operation.get('type')!r} "
                 "is not implemented."
             )
 
+        # S06 removes the entire reference winner set using its stored scores,
+        # so ties are not broken arbitrarily by presentation order.
+        if set(operation) - {"type", "reference", "tie_policy", "tie_atol", "on_empty_alternatives"}:
+            raise ValueError("Unsupported remove_winner fields.")
         if operation.get("tie_policy") != "remove_all_winners":
             raise ValueError("Unsupported winner-removal tie policy.")
 
@@ -693,7 +872,7 @@ def resolve_execution_inputs(
         ):
             raise ValueError("tie_atol must be finite and nonnegative.")
 
-        source = get_dependency(operation["reference"])
+        source = get_dependency(operation.get("reference"))
         rankings = source.mcdm.session.ranking.rankings
 
         if not rankings:
@@ -759,7 +938,16 @@ def resolve_execution_inputs(
             "tie_atol": tolerance,
         })
 
-    # Resolve requested artifact reuse.
+    # Reject weight maps made stale by a later dimension change. Operation order
+    # is explicit: remove criteria before setting weights for the reduced set.
+    for weights in resolved.criterion_weight_overrides.values():
+        if set(weights) != set(resolved.ranking_criterion_ids):
+            raise ValueError("Weight overrides must match the final ranking criteria.")
+    resolved.metadata["ranking_criterion_ids"] = list(resolved.ranking_criterion_ids)
+
+    # Resolve requested artifact reuse after the alternative/criterion operations.
+    # Reuse retains full original AHP evidence; the executor restricts and
+    # renormalizes applied ranking weights over ranking_criterion_ids.
     reuse = experiment.case_metadata.get("reuse", {})
 
     if not isinstance(reuse, dict):
@@ -795,8 +983,14 @@ def resolve_execution_inputs(
     if len(scopes) != len(set(scopes)):
         raise ValueError("Reuse scopes must not contain duplicates.")
 
-    if rule.get("criterion_alignment") != "require_identical_ids":
+    alignment = rule.get("criterion_alignment")
+    if not isinstance(alignment, str) or alignment not in {"require_identical_ids", "restrict_and_renormalize"}:
         raise ValueError("Unsupported criterion alignment policy.")
+    if set(scopes) & set(resolved.criterion_weight_overrides):
+        raise ValueError("A scope cannot both reuse and explicitly override criterion weights.")
+    if (alignment == "require_identical_ids"
+            and set(resolved.ranking_criterion_ids) != {c.id for c in experiment.session.criteria}):
+        raise ValueError("Removed ranking criteria require restrict_and_renormalize reuse.")
 
     source = get_dependency(rule["reference"])
 
@@ -947,6 +1141,8 @@ def resolve_execution_inputs(
                 "source_entity_id": calculation.entity_id,
                 "reference": source.case_key,
                 "source_run_id": source.run_id,
+                "criterion_alignment": alignment,
+                "ranking_criterion_ids": list(resolved.ranking_criterion_ids),
             })
 
     return resolved
@@ -1003,6 +1199,8 @@ def execute_run(
                 reused_weighting=resolved.reused_weightings.get(
                     ("participant", participant.id)
                 ),
+                ranking_criterion_ids=resolved.ranking_criterion_ids,
+                criterion_weight_override=resolved.criterion_weight_overrides.get("participant"),
             )
 
             result.mcdm.participants.append(calculation)
@@ -1039,6 +1237,8 @@ def execute_run(
                 reused_weighting=resolved.reused_weightings.get(
                     ("group", group.id)
                 ),
+                ranking_criterion_ids=resolved.ranking_criterion_ids,
+                criterion_weight_override=resolved.criterion_weight_overrides.get("group"),
             )
 
             result.mcdm.groups.append(calculation)
@@ -1059,6 +1259,8 @@ def execute_run(
             reused_weighting=resolved.reused_weightings.get(
                 ("session", session.id)
             ),
+            ranking_criterion_ids=resolved.ranking_criterion_ids,
+            criterion_weight_override=resolved.criterion_weight_overrides.get("session"),
         )
 
         result.set_status("calculated")
