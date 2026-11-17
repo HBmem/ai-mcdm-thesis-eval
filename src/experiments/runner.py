@@ -9,7 +9,8 @@ import sys
 import subprocess
 import numpy as np
 
-from collections.abc import Iterable
+from contextlib import contextmanager
+from collections.abc import Iterable, Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from itertools import combinations
@@ -26,12 +27,12 @@ from src.mcdm.enums import (
     EmptyGroupPolicy, OnExceedancePolicy, PairwisePreference,
 )
 from src.mcdm.service import MCDMService, validate_weight_vector
-from src.mcdm.models.computation import EntityCalculation, CriterionWeight
+from src.mcdm.models.computation import EntityCalculation, CriterionWeight, StageError, EntityMetadata, WeightingSource
 from src.mcdm.models.domain import Alternative, CriterionValue
 from src.mcdm.reference import DERIVATIONS
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 VALID_WEIGHTING_METHODS = [WeightingMethod.AHP]
 VALID_RANKING_METHODS = [RankingMethod.TOPSIS]
@@ -44,6 +45,17 @@ ALLOWED_SCOPES = {"participant", "group", "session"}
 
 def _hash(payload):
     return hashlib.sha256(payload).hexdigest()
+
+def _hash_json(value) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+
+    return _hash(encoded)
 
 @dataclass(frozen=True)
 class PreparedRun:
@@ -545,6 +557,22 @@ def _normalize_selector(value):
         family = f"S{int(match[1]):02}"
     return family + separator + case
 
+def _optional_provenance(
+    label,
+    action,
+    notes,
+    *,
+    errors,
+):
+    try:
+        return action()
+
+    except errors as error:
+        notes.append(
+            f"{label} unavailable: "
+            f"{type(error).__name__}: {error}"
+        )
+        return None
 
 def _run_key(case_key, repetition):
     return f"{case_key}#r{repetition:03d}"
@@ -597,7 +625,14 @@ def _create_run_result(run: PreparedRun) -> RunResult:
             "seed": run.seed,
             "dependencies": list(run.dependencies),
             "reference_runs": dict(run.reference_runs),
-            "numerical_status": "pending",
+            "created_at": timestamp(),
+            "attempt_started_at": None,
+            "attempt_completed_at": None,
+            "attempt_duration_seconds": None,
+            "numerical_started_at": None,
+            "numerical_completed_at": None,
+            "numerical_duration_seconds": None,
+            "numerical_status": "not_run",
             "messages": [],
         },
     )
@@ -715,46 +750,179 @@ def _build_ranking_weighting(
     return ranking_weighting, applied_by_id, source
 
 def provenance(experiment, inputs):
-    def _hash(payload):
-        return hashlib.sha256(payload).hexdigest()
+    notes = []
 
-    def git(*args):
-        result = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
-
-    hashes = {}
-    source = Path(experiment.source_path)
-    for label, path in (
-        ("experiment", source),
-        ("criteria", source.parent / experiment.resources.criteria),
-        ("alternatives", source.parent / experiment.resources.alternatives),
-        ("dataset", source.parent / experiment.resources.dataset)
-    ):
-        hashes[label] = _hash(path.read_bytes())
-
-    versions = {}
-
-    for package in ("numpy", "scipy", "pydantic", "pandas", "streamlit", "openai"):
+    def git_output(*arguments):
         try:
-            versions[package] = version(package)
-        except PackageNotFoundError:
-            versions[package] = None
-    # Include untracked source files: git revision alone cannot identify this workspace.
-    code = {str(p.relative_to(ROOT)): _hash(p.read_bytes()) for p in sorted((ROOT / "src").rglob("*.py"))}
+            process = subprocess.run(
+                [
+                    "git",
+                    "--no-optional-locks",
+                    "-C",
+                    str(ROOT),
+                    *arguments,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            notes.append(f"Git metadata unavailable: {type(error).__name__}")
+            return None
 
-    for name in ("main.py", "app.py"):
-        code[name] = _hash((ROOT / name).read_bytes())
-    return {
-        "resource_hashes": hashes,
-        "input_hash": _hash(json.dumps(inputs, sort_keys=True, allow_nan=False).encode()),
-        "code_revision": git("rev-parse", "HEAD"),
-        "dirty_worktree": bool(git("status", "--porcelain")),
-        "code_hashes": code,
-        "python": sys.version,
-        "dependencies": versions,
-        "seed": experiment.execution.random_seed,
-        "engine": "independent_numpy_reference",
-        "poliinsight_validated": False
+        if process.returncode != 0:
+            notes.append(f"Git command failed: {' '.join(arguments)}")
+            return None
+
+        return process.stdout.strip()
+
+    revision = git_output("rev-parse", "HEAD")
+    worktree_status = git_output(
+        "status",
+        "--porcelain",
+        "--untracked-files=normal",
+    )
+
+    source = Path(experiment.source_path).resolve()
+
+    resources = {
+        "experiment": source,
+        "criteria": (
+            source.parent / experiment.resources.criteria
+        ).resolve(),
+        "alternatives": (
+            source.parent / experiment.resources.alternatives
+        ).resolve(),
+        "dataset": (
+            source.parent / experiment.resources.dataset
+        ).resolve(),
     }
+
+    resource_hashes = {}
+
+    for name, path in resources.items():
+        resource_hashes[name] = {
+            "path": str(path),
+            "sha256": _optional_provenance(
+                f"Resource hash: {name}",
+                lambda path=path: _hash(path.read_bytes()),
+                notes,
+                errors=(OSError,),
+            ),
+        }
+
+    discovered = _optional_provenance(
+        "Source-code discovery",
+        lambda: list((ROOT / "src").rglob("*.py")),
+        notes,
+        errors=(OSError,),
+    )
+
+    code_paths = set(discovered or [])
+
+    code_paths.update(
+        ROOT / name
+        for name in (
+            "main.py",
+            "requirements.txt",
+            "requirements-dev.txt",
+        )
+    )
+
+    code_hashes = {}
+
+    for path in sorted(code_paths):
+        code_hashes[path.relative_to(ROOT).as_posix()] = (
+            _optional_provenance(
+                f"Code hash: {path.name}",
+                lambda path=path: _hash(path.read_bytes()),
+                notes,
+                errors=(OSError,),
+            )
+        )
+
+    dependency_versions = {}
+
+    for package in (
+        "numpy",
+        "scipy",
+        "pydantic",
+        "pyDecision",
+        "openai",
+    ):
+        dependency_versions[package] = _optional_provenance(
+            f"Package version: {package}",
+            lambda package=package: version(package),
+            notes,
+            errors=(PackageNotFoundError,),
+        )
+
+    requested_input_hash = _optional_provenance(
+        "Requested input hash",
+        lambda: _hash_json(inputs),
+        notes,
+        errors=(TypeError, ValueError),
+    )
+    
+    return {
+        "requested_input_hash": requested_input_hash,
+        "resource_hashes": resource_hashes,
+        "code_hashes": code_hashes,
+        "code_revision": revision,
+        "dirty_worktree": (
+            None
+            if worktree_status is None
+            else bool(worktree_status)
+        ),
+        "python": sys.version,
+        "dependencies": dependency_versions,
+        "seed": experiment.execution.random_seed,
+        "processing": inputs["processing"],
+        "engine": {
+            "weighting": "pyDecision",
+            "ranking": "pyDecision",
+            "aggregation": "local judgment-matrix aggregation",
+            "two_criterion_ahp": "local analytical convention",
+        },
+        "notes": notes,
+    }
+
+@contextmanager
+def entity_stage(calculation, name):
+    if name not in {"weighting", "ranking"}:
+        raise ValueError(f"Unknown entity stage: {name!r}")
+
+    record = getattr(calculation.metadata.stages, name)
+
+    if record.status != "not_run":
+        raise ValueError(
+            f"Stage {name!r} has already started."
+        )
+
+    record.status = "running"
+    record.started_at = timestamp()
+    started = time.perf_counter()
+
+    try:
+        yield
+
+    except Exception as error:
+        record.status = "failed"
+        record.error = StageError(
+            type=type(error).__name__,
+            message=str(error),
+        )
+        raise
+
+    else:
+        record.status = "completed"
+
+    finally:
+        record.completed_at = timestamp()
+        record.duration_seconds = (
+            time.perf_counter() - started
+        )
 
 def calculate_entity(
     *,
@@ -764,97 +932,121 @@ def calculate_entity(
     decision_matrix,
     session,
     processing,
-    metadata=None,
+    metadata: EntityMetadata | None = None,
     reused_weighting: ReusedWeighting | None = None,
     ranking_criterion_ids=None,
     criterion_weight_override=None,
+    on_created: Callable[[EntityCalculation], None] | None = None,
 ) -> EntityCalculation:
-    metadata = {} if metadata is None else dict(metadata)
-
-    if reused_weighting is None:
-        weighting = MCDMService.generate_weights(
-            session=session,
-            pairwise_matrix=pairwise_matrix,
-            config=processing.weighting_method,
-            consistency=processing.consistency_method,
-        )
-
-        metadata["weighting_source"] = "calculated"
-
-    else:
-        if (
-            pairwise_matrix.shape
-            != reused_weighting.pairwise_matrix.shape
-            or not np.allclose(
-                pairwise_matrix,
-                reused_weighting.pairwise_matrix,
-                atol=1e-12,
-                rtol=0,
-            )
-        ):
-            raise ValueError("Current preferences do not match the reused weights.")
-
-        weighting = reused_weighting.weighting.model_copy(deep=True)
-
-        metadata["weighting_source"] = {
-            "type": "reused",
-            "source_run_id": reused_weighting.source_run_id,
-            "source_case_key": reused_weighting.source_case_key,
-        }
-
-    full_ids = [
-        criterion.id
-        for criterion in session.criteria
-    ]
-
-    ranking_criterion_ids = (
-        full_ids
-        if ranking_criterion_ids is None
-        else ranking_criterion_ids
-    )
-
-    ranking_weighting, applied_weights, weight_source = (
-        _build_ranking_weighting(
-            weighting,
-            full_criterion_ids=full_ids,
-            ranking_criterion_ids=ranking_criterion_ids,
-            override=criterion_weight_override,
-        )
-    )
-
-    positions = {
-        criterion_id: index
-        for index, criterion_id in enumerate(full_ids)
-    }
-
-    ranking_view = session.model_copy(update={
-        "criteria": [
-            session.criteria[positions[cid]]
-            for cid in ranking_criterion_ids
-        ],
-    })
-
-    metadata["ranking_criterion_ids"] = list(
-        ranking_criterion_ids
-    )
-    metadata["applied_criterion_weights"] = applied_weights
-    metadata["ranking_weight_source"] = weight_source
-
-    ranking = MCDMService.generate_ranking(
-        session=ranking_view,
-        decision_matrix=decision_matrix[:, [positions[cid] for cid in ranking_criterion_ids]],
-        weighting=ranking_weighting,
-        config=processing.ranking_method,
-    )
-
-    return EntityCalculation(
+    calculation = EntityCalculation(
         entity_id=entity_id,
         scope=scope,
         pairwise_matrix=pairwise_matrix.tolist(),
-        weighting=weighting,
-        ranking=ranking,
-        metadata=metadata,
+        metadata=(
+            EntityMetadata()
+            if metadata is None
+            else deepcopy(metadata)
+        ),
     )
+
+    if on_created is not None:
+        on_created(calculation)
+
+    with entity_stage(calculation, "weighting"):
+        if reused_weighting is None:
+            weighting = MCDMService.generate_weights(
+                session=session,
+                pairwise_matrix=pairwise_matrix,
+                config=processing.weighting_method,
+                consistency=processing.consistency_method,
+            )
+
+            calculation.metadata.weighting_source = WeightingSource(kind="calculated")
+
+        else:
+            if (
+                pairwise_matrix.shape
+                != reused_weighting.pairwise_matrix.shape
+                or not np.allclose(
+                    pairwise_matrix,
+                    reused_weighting.pairwise_matrix,
+                    atol=1e-12,
+                    rtol=0,
+                )
+            ):
+                raise ValueError(
+                    "Current preferences do not match the reused weights."
+                )
+
+            weighting = reused_weighting.weighting.model_copy(
+                deep=True
+            )
+
+            calculation.metadata.weighting_source = WeightingSource(
+                kind="reused",
+                source_run_id=reused_weighting.source_run_id,
+                source_case_key=reused_weighting.source_case_key,
+            )
+
+        # Preserve successful weighting before projection or ranking begins.
+        calculation.weighting = weighting
+
+    with entity_stage(calculation, "ranking"):
+        full_ids = [
+            criterion.id
+            for criterion in session.criteria
+        ]
+
+        selected_ids = (
+            full_ids
+            if ranking_criterion_ids is None
+            else list(ranking_criterion_ids)
+        )
+
+        (
+            ranking_weighting,
+            applied_weights,
+            weight_source,
+        ) = _build_ranking_weighting(
+            weighting,
+            full_criterion_ids=full_ids,
+            ranking_criterion_ids=selected_ids,
+            override=criterion_weight_override,
+        )
+
+        positions = {
+            criterion_id: index
+            for index, criterion_id in enumerate(full_ids)
+        }
+
+        selected_positions = [
+            positions[criterion_id]
+            for criterion_id in selected_ids
+        ]
+
+        # Preserve the full preference session. This view supplies only
+        # the selected criterion columns to the ranking service.
+        ranking_view = session.model_copy(update={
+            "criteria": [
+                session.criteria[index]
+                for index in selected_positions
+            ],
+        })
+
+        calculation.metadata.ranking_criterion_ids = selected_ids
+        calculation.metadata.applied_criterion_weights = applied_weights
+        calculation.metadata.ranking_weight_source = weight_source
+
+        calculation.ranking = MCDMService.generate_ranking(
+            session=ranking_view,
+            decision_matrix=decision_matrix[
+                :, selected_positions
+            ],
+            weighting=ranking_weighting,
+            config=processing.ranking_method,
+        )
+
+    return calculation
 
 def prepare_runs(
     experiments: Iterable[Experiment],
@@ -1583,14 +1775,36 @@ def execute_run(
     *,
     dependency_results: dict[str, RunResult] | None = None
 ) -> RunResult:
-    # experiment =  run.experiment
-    # session = experiment.session
-    # processing = experiment.processing
-
     result = _create_run_result(run)
 
+    result.execution["attempt_started_at"] = timestamp()
+    attempt_started = time.perf_counter()
+    numerical_started = None
+
     try:
-        result.execution["numerical_status"] = "running"
+        result.execution["resolution_status"] = "not_run"
+        result.execution["provenance_status"] = "running"
+
+        # Capture provenance for the original prepared inputs.
+        result.provenance = provenance(
+            run.experiment,
+            result.inputs,
+        )
+
+        result.provenance["dependency_run_ids"] = {
+            reference: dependency.run_id
+            for reference, dependency in (
+                dependency_results or {}
+            ).items()
+        }
+
+        notes = result.provenance["notes"]
+
+        result.execution["provenance_status"] = (
+            "incomplete" if notes else "completed"
+        )
+
+        # Resolve runtime operations before inspecting their outputs.
         result.execution["resolution_status"] = "running"
 
         resolved = resolve_execution_inputs(
@@ -1605,6 +1819,34 @@ def execute_run(
         result.inputs = experiment.to_dict()
         result.execution["input_resolution"] = resolved.metadata
         result.execution["resolution_status"] = "completed"
+
+        # Hash the actual resolved inputs and resolution metadata.
+        result.provenance["resolved_input_hash"] = (
+            _optional_provenance(
+                "Resolved input hash",
+                lambda: _hash_json(result.inputs),
+                notes,
+                errors=(TypeError, ValueError),
+            )
+        )
+
+        result.provenance["resolution_hash"] = (
+            _optional_provenance(
+                "Resolution hash",
+                lambda: _hash_json(resolved.metadata),
+                notes,
+                errors=(TypeError, ValueError),
+            )
+        )
+
+        result.execution["provenance_status"] = (
+            "incomplete" if notes else "completed"
+        )
+
+        # Numerical timing begins only when calculation begins.
+        result.execution["numerical_status"] = "running"
+        result.execution["numerical_started_at"] = timestamp()
+        numerical_started = time.perf_counter()
 
         decision_matrix = MCDMService.create_decision_matrix(
             session
@@ -1624,17 +1866,16 @@ def execute_run(
                 decision_matrix=decision_matrix,
                 session=session,
                 processing=processing,
-                metadata={
-                    "group_id": participant.stakeholder_group_id,
-                },
+                metadata=EntityMetadata(
+                    group_id=participant.stakeholder_group_id,
+                ),
                 reused_weighting=resolved.reused_weightings.get(
                     ("participant", participant.id)
                 ),
                 ranking_criterion_ids=resolved.ranking_criterion_ids,
                 criterion_weight_override=resolved.criterion_weight_overrides.get("participant"),
+                on_created=result.mcdm.participants.append,
             )
-
-            result.mcdm.participants.append(calculation)
             
         # Stakeholder groups
         for group in session.stakeholder_groups:
@@ -1661,18 +1902,17 @@ def execute_run(
                 decision_matrix=decision_matrix,
                 session=session,
                 processing=processing,
-                metadata={
-                    "participant_count": len(members),
-                    "voting_power": group.voting_power,
-                },
+                metadata=EntityMetadata(
+                    participant_count=len(members),
+                    voting_power=group.voting_power,
+                ),
                 reused_weighting=resolved.reused_weightings.get(
                     ("group", group.id)
                 ),
                 ranking_criterion_ids=resolved.ranking_criterion_ids,
                 criterion_weight_override=resolved.criterion_weight_overrides.get("group"),
+                on_created=result.mcdm.groups.append
             )
-
-            result.mcdm.groups.append(calculation)
 
         # Complete session.
         matrix = MCDMService.create_session_matrix(
@@ -1692,6 +1932,7 @@ def execute_run(
             ),
             ranking_criterion_ids=resolved.ranking_criterion_ids,
             criterion_weight_override=resolved.criterion_weight_overrides.get("session"),
+            on_created=lambda calculation: setattr(result.mcdm, "session", calculation)
         )
 
         result.set_status("calculated")
@@ -1699,7 +1940,12 @@ def execute_run(
 
     except Exception as error:
         result.set_status("failed")
-        result.execution["numerical_status"] = "failed"
+
+        result.execution["numerical_status"] = (
+            "not_run"
+            if numerical_started is None
+            else "failed"
+        )
 
         if result.execution.get("resolution_status") == "running":
             result.execution["resolution_status"] = "failed"
@@ -1707,6 +1953,17 @@ def execute_run(
         result.execution["messages"].append(
             f"{type(error).__name__}: {error}"
         )
+    finally:
+        result.execution["attempt_completed_at"] = timestamp()
+        result.execution["attempt_duration_seconds"] = (
+            time.perf_counter() - attempt_started
+        )
+
+        if numerical_started is not None:
+            result.execution["numerical_completed_at"] = timestamp()
+            result.execution["numerical_duration_seconds"] = (
+                time.perf_counter() - numerical_started
+            )
 
     return result
 

@@ -98,15 +98,72 @@ class RankingResult(BaseModel):
         description="Alternatives ordered from highest to lowest preference.",
     )
 
+StageStatus = Literal[
+    "not_run",
+    "running",
+    "completed",
+    "failed",
+]
+
+@dataclass
+class StageError:
+    type: str
+    message: str
+
+@dataclass
+class StageRecord:
+    status: StageStatus = "not_run"
+    started_at: str | None = None
+    completed_at: str | None = None
+    duration_seconds: float | None = None
+    error: StageError | None = None
+
+
+@dataclass
+class EntityStages:
+    weighting: StageRecord = field(default_factory=StageRecord)
+    ranking: StageRecord = field(default_factory=StageRecord)
+
+
+@dataclass
+class WeightingSource:
+    kind: Literal["calculated", "reused"]
+    source_run_id: str | None = None
+    source_case_key: str | None = None
+
+
+@dataclass
+class EntityMetadata:
+    group_id: str | None = None
+    participant_count: int | None = None
+    voting_power: float | None = None
+
+    weighting_source: WeightingSource | None = None
+
+    ranking_criterion_ids: list[str] = field(
+        default_factory=list
+    )
+    applied_criterion_weights: dict[str, float] = field(
+        default_factory=dict
+    )
+    ranking_weight_source: Literal[
+        "original",
+        "restricted_and_renormalized",
+        "explicit",
+    ] | None = None
+
+    stages: EntityStages = field(default_factory=EntityStages)
+
 @dataclass
 class EntityCalculation:
     entity_id: str
     scope: Literal["participant", "group", "session"]
     pairwise_matrix: list[list[float]]
-    weighting: WeightResult
-    ranking: RankingResult
-    metadata: dict = field(default_factory=dict)
 
+    weighting: WeightResult | None = None
+    ranking: RankingResult | None = None
+
+    metadata: EntityMetadata = field(default_factory=EntityMetadata)
 
 @dataclass
 class ExperimentCalculation:
