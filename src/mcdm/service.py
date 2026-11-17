@@ -23,7 +23,63 @@ from src.mcdm.models.computation import WeightResult, CriterionWeight, RankingRe
 
 
 ROUNDOFF_TOLERANCE = 1e-12
+WEIGHT_SUM_TOLERANCE = 1e-10
 
+def validate_weight_vector(
+    values,
+    *,
+    expected_count: int,
+    label: str,
+    allow_zero: bool = True,
+) -> np.ndarray:
+    try:
+        raw = np.asarray(values)
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"{label}: weights must form a numeric vector."
+        ) from error
+
+    # Reject booleans, strings, complex numbers, and object arrays.
+    if raw.dtype.kind not in {"i", "u", "f"}:
+        raise ValueError(
+            f"{label}: weights must contain real numeric values."
+        )
+
+    if raw.shape != (expected_count,):
+        raise ValueError(
+            f"{label}: expected shape {(expected_count,)}, "
+            f"received {raw.shape}."
+        )
+
+    weights = raw.astype(float, copy=True)
+
+    if not np.all(np.isfinite(weights)):
+        raise ValueError(f"{label}: weights must be finite.")
+
+    if np.any(weights < 0) or np.any(weights > 1):
+        raise ValueError(
+            f"{label}: weights must be between zero and one."
+        )
+
+    if not allow_zero and np.any(weights == 0):
+        raise ValueError(
+            f"{label}: weights must be strictly positive."
+        )
+
+    total = float(weights.sum())
+
+    if not np.isclose(
+        total,
+        1.0,
+        atol=WEIGHT_SUM_TOLERANCE,
+        rtol=0.0,
+    ):
+        raise ValueError(
+            f"{label}: weights must already sum to one; "
+            f"received {total!r}."
+        )
+
+    return weights
 
 class MCDMService:
     """
@@ -316,7 +372,7 @@ class MCDMService:
 # WEIGHT GENERATION
 # ============================================================
 
-    @staticmethod
+    # @staticmethod
     def calculate_ahp(
         pairwise_matrix: np.ndarray,
         *,
@@ -365,32 +421,38 @@ class MCDMService:
         if not isinstance(wd, str) or wd not in supported_weight_derivations:
             raise ValueError(f"Unsupported AHP weight derivation method: {wd!r}.")
 
-        # Apply your explicit two-criterion consistency policy.
         criterion_count = pairwise_matrix.shape[0]
-        if criterion_count == 2:
-            left_to_right = pairwise_matrix[0, 1]
-            weights = np.asarray(
-                [
-                    left_to_right / (1.0 + left_to_right),
-                    1.0 / (1.0 + left_to_right),
-                ]
-            )
-            return weights, 0.0
+
+        # Apply your explicit two-criterion consistency policy.
         if criterion_count > 15:
             raise ValueError(
                 "AHP consistency ratios are supported for at most 15 criteria."
             )
 
-        # Perform the PyDecision calculation.
-        # Validate and return the outputs.
-        weights, consistency_ratio = ahp_method(
-            pairwise_matrix,
-            wd=wd,
+        if criterion_count == 2:
+            ratio = pairwise_matrix[0, 1]
+
+            weights = np.asarray([
+                ratio / (1.0 + ratio),
+                1.0 / (1.0 + ratio),
+            ])
+
+            consistency_ratio = 0.0
+
+        else:
+            # Perform the PyDecision calculation.
+            weights, consistency_ratio = ahp_method(
+                pairwise_matrix.copy(),
+                wd=wd,
+            )
+
+        weights = validate_weight_vector(
+            weights,
+            expected_count=criterion_count,
+            label="AHP output",
+            allow_zero=False,
         )
 
-        # Some experiments result in a tiny negative consistency ratio from floating-point rounding.
-        # That are effectively zero, but WeightResult correctly requires consistency_ratio >= 0
-        # To resolve will normalize negligible negative values, before constructing WeightResult.
         consistency_ratio = float(consistency_ratio)
 
         if not np.isfinite(consistency_ratio):
@@ -398,18 +460,14 @@ class MCDMService:
                 "AHP returned a nonfinite consistency ratio."
             )
 
-        # Numerical tolerance, separate from the inconsistency threshold.
-
         if consistency_ratio < -ROUNDOFF_TOLERANCE:
             raise ValueError(
-                "AHP returned a materially negative consistency ratio: "
-                f"{consistency_ratio!r}"
+                "AHP returned a materially negative consistency ratio."
             )
 
-        # Correct only negligible negative rounding noise.
         consistency_ratio = max(0.0, consistency_ratio)
 
-        return np.asarray(weights, dtype=float), consistency_ratio
+        return weights, consistency_ratio
 
 # ============================================================
 # RANKING GENERATION
@@ -508,6 +566,13 @@ class MCDMService:
                 f"Weighting method {config.method!r} is not implemented."
             )
 
+        weights = validate_weight_vector(
+            weights,
+            expected_count=len(session.criteria),
+            label=f"{config.method.value} weighting result",
+            allow_zero=config.method != WeightingMethod.AHP,
+        )
+        
         return WeightResult(
             criterion_weights=[
                 CriterionWeight(

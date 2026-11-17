@@ -25,8 +25,8 @@ from src.mcdm.enums import (
     WeightingMethod, RankingMethod, MeanMethod, GroupPowerMethod,
     EmptyGroupPolicy, OnExceedancePolicy, PairwisePreference,
 )
-from src.mcdm.service import MCDMService
-from src.mcdm.models.computation import EntityCalculation
+from src.mcdm.service import MCDMService, validate_weight_vector
+from src.mcdm.models.computation import EntityCalculation, CriterionWeight
 from src.mcdm.models.domain import Alternative, CriterionValue
 from src.mcdm.reference import DERIVATIONS
 
@@ -83,7 +83,342 @@ def _unique_ids(items, label):
         raise ValueError(f"Duplicate {label} IDs.")
     return set(ids)
 
+def _require_fields(value, *, required, optional=(), label):
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be an object.")
 
+    missing = set(required) - set(value)
+    unknown = set(value) - set(required) - set(optional)
+
+    if missing or unknown:
+        raise ValueError(
+            f"{label}: missing fields {sorted(missing)}; "
+            f"unsupported fields {sorted(unknown)}."
+        )
+
+
+def _require_ids(value, *, label, allowed=None):
+    if (
+        not isinstance(value, list)
+        or not value
+        or any(
+            not isinstance(item, str) or not item
+            for item in value
+        )
+    ):
+        raise ValueError(
+            f"{label} must be a nonempty list of strings."
+        )
+
+    if len(value) != len(set(value)):
+        raise ValueError(f"{label} contains duplicate IDs.")
+
+    if allowed is not None and not set(value) <= set(allowed):
+        raise ValueError(f"{label} contains unknown IDs.")
+
+    return value
+
+
+def _require_dependency(reference, declared):
+    if (
+        not isinstance(reference, str)
+        or not reference
+        or reference not in declared
+    ):
+        raise ValueError(
+            f"Reference {reference!r} must appear in "
+            "result_dependencies."
+        )
+
+def _validate_runtime_declarations(experiment):
+    case = experiment.case_metadata
+
+    if not isinstance(case, dict):
+        raise ValueError("Case metadata must be an object.")
+
+    declared = case.get("result_dependencies", [])
+
+    if not isinstance(declared, list):
+        raise ValueError("result_dependencies must be a list.")
+
+    if declared:
+        _require_ids(
+            declared,
+            label="result_dependencies",
+        )
+
+    declared = set(declared)
+
+    operations = case.get("runtime_operations", [])
+
+    if not isinstance(operations, list):
+        raise ValueError("runtime_operations must be a list.")
+
+    full_ids = {
+        criterion.id
+        for criterion in experiment.session.criteria
+    }
+    ranking_ids = set(full_ids)
+
+    alternative_ids = {
+        alternative.id
+        for alternative in experiment.session.alternatives
+    }
+
+    overrides = {}
+
+    for operation in operations:
+        if not isinstance(operation, dict):
+            raise ValueError("Every runtime operation must be an object.")
+
+        kind = operation.get("type")
+
+        if kind == "remove_criteria":
+            _require_fields(
+                operation,
+                required={
+                    "type",
+                    "criterion_ids",
+                    "target",
+                    "preserve_preference_evidence",
+                },
+                label=kind,
+            )
+
+            if (
+                operation["target"] != "ranking"
+                or operation["preserve_preference_evidence"] is not True
+            ):
+                raise ValueError("Criterion removal must target ranking and preserve preference evidence.")
+
+            removed = _require_ids(
+                operation["criterion_ids"],
+                label="criterion_ids",
+                allowed=ranking_ids,
+            )
+
+            ranking_ids -= set(removed)
+
+            if not ranking_ids:
+                raise ValueError("At least one ranking criterion must remain.")
+
+        elif kind == "set_criterion_weights":
+            _require_fields(
+                operation,
+                required={"type", "scopes", "weights"},
+                label=kind,
+            )
+
+            scopes = _require_ids(
+                operation["scopes"],
+                label="Weight override scopes",
+                allowed=ALLOWED_SCOPES,
+            )
+
+            weights = operation["weights"]
+
+            if (
+                not isinstance(weights, dict)
+                or set(weights) != ranking_ids
+            ):
+                raise ValueError("Explicit weights must cover the current ranking criteria.")
+
+            ordered_ids = sorted(ranking_ids)
+
+            validate_weight_vector(
+                [weights[cid] for cid in ordered_ids],
+                expected_count=len(ordered_ids),
+                label="Declared explicit weights",
+            )
+
+            for scope in scopes:
+                overrides[scope] = set(weights)
+
+        elif kind == "remove_winner":
+            _require_fields(
+                operation,
+                required={
+                    "type",
+                    "reference",
+                    "tie_policy",
+                    "on_empty_alternatives",
+                },
+                optional={"tie_atol"},
+                label=kind,
+            )
+
+            _require_dependency(
+                operation["reference"],
+                declared,
+            )
+
+            if operation["tie_policy"] != "remove_all_winners":
+                raise ValueError("Unsupported tie policy.")
+
+            if operation["on_empty_alternatives"] != "error":
+                raise ValueError("Unsupported empty-alternative policy.")
+
+            if not _nonnegative_number(
+                operation.get("tie_atol", 1e-12)
+            ):
+                raise ValueError("tie_atol must be finite and nonnegative.")
+
+            # The surviving IDs require the reference ranking.
+            alternative_ids = None
+
+        elif kind == "inherit_alternatives":
+            _require_fields(
+                operation,
+                required={"type", "reference"},
+                label=kind,
+            )
+
+            _require_dependency(
+                operation["reference"],
+                declared,
+            )
+
+            # The dependency's resolved rows are not available yet.
+            alternative_ids = None
+
+        elif kind == "remove_alternatives":
+            _require_fields(
+                operation,
+                required={"type", "alternative_ids"},
+                label=kind,
+            )
+
+            removed = _require_ids(
+                operation["alternative_ids"],
+                label="alternative_ids",
+                allowed=alternative_ids,
+            )
+
+            if alternative_ids is not None:
+                alternative_ids -= set(removed)
+
+                if not alternative_ids:
+                    raise ValueError("At least one alternative must remain.")
+
+        elif kind == "add_alternatives":
+            _require_fields(
+                operation,
+                required={"type", "alternatives"},
+                label=kind,
+            )
+
+            additions = operation["alternatives"]
+
+            if not isinstance(additions, list) or not additions:
+                raise ValueError("alternatives must be a nonempty list.")
+
+            added_ids = set()
+
+            for item in additions:
+                _require_fields(
+                    item,
+                    required={"id", "name", "values"},
+                    optional={"description"},
+                    label="Added alternative",
+                )
+
+                for field in ("id", "name"):
+                    if (
+                        not isinstance(item[field], str)
+                        or not item[field]
+                    ):
+                        raise ValueError(f"Alternative {field} must be a nonempty string.")
+
+                if (
+                    "description" in item
+                    and not isinstance(item["description"], str)
+                ):
+                    raise ValueError("Alternative description must be a string.")
+
+                aid = item["id"]
+
+                if (
+                    aid in added_ids
+                    or (
+                        alternative_ids is not None
+                        and aid in alternative_ids
+                    )
+                ):
+                    raise ValueError(f"Duplicate alternative ID: {aid!r}.")
+
+                values = item["values"]
+
+                if (
+                    not isinstance(values, dict)
+                    or set(values) != full_ids
+                    or any(
+                        isinstance(value, bool)
+                        or not isinstance(value, (int, float))
+                        or not math.isfinite(value)
+                        for value in values.values()
+                    )
+                ):
+                    raise ValueError("Added alternatives require finite values for every preference criterion.")
+
+                added_ids.add(aid)
+
+            if alternative_ids is not None:
+                alternative_ids |= added_ids
+
+        else:
+            raise ValueError(f"Unsupported runtime operation: {kind!r}.")
+
+    # Reject overrides invalidated by a later criterion removal.
+    for scope, ids in overrides.items():
+        if ids != ranking_ids:
+            raise ValueError(f"{scope} override does not match the final ranking criteria.")
+
+    reuse = case.get("reuse", {})
+
+    _require_fields(
+        reuse,
+        required=set(),
+        optional={"criterion_weights"},
+        label="reuse",
+    )
+
+    if "criterion_weights" not in reuse:
+        return
+
+    rule = reuse["criterion_weights"]
+
+    _require_fields(
+        rule,
+        required={"reference", "criterion_alignment"},
+        optional={"scopes"},
+        label="criterion_weights reuse",
+    )
+
+    _require_dependency(rule["reference"], declared)
+
+    scopes = _require_ids(
+        rule.get("scopes", ["session"]),
+        label="Reuse scopes",
+        allowed=ALLOWED_SCOPES,
+    )
+
+    alignment = rule["criterion_alignment"]
+
+    if alignment not in (
+        "require_identical_ids",
+        "restrict_and_renormalize",
+    ):
+        raise ValueError("Unsupported criterion alignment policy.")
+
+    if (
+        alignment == "require_identical_ids"
+        and ranking_ids != full_ids
+    ):
+        raise ValueError("Removed ranking criteria require restrict_and_renormalize reuse.")
+
+    if set(scopes) & set(overrides):
+        raise ValueError("A scope cannot both reuse and explicitly override criterion weights.")
+    
 def _validate_case(experiment):
     """Check executable settings and numerical input shape without calculating."""
     if experiment.schema_version != "3.0" or experiment.judgment_encoding != "pairwise_preference":
@@ -160,6 +495,9 @@ def _validate_case(experiment):
         if any(isinstance(v.value, bool) or not isinstance(v.value, (int, float))
                or not math.isfinite(v.value) for v in values):
             raise ValueError("Alternative values must be finite numbers.")
+
+    _validate_runtime_declarations(experiment)
+
     return validate_assertions(experiment.expected_assertions, criterion_ids=cids, group_ids=gids)
 
 
@@ -210,32 +548,6 @@ def _normalize_selector(value):
 
 def _run_key(case_key, repetition):
     return f"{case_key}#r{repetition:03d}"
-
-def _normalize_inputs(experiment):
-    session = experiment.session
-    return {
-        "experiment_schema_version": experiment.schema_version,
-        "research_purpose": experiment.research_purpose,
-        "scenario": {
-            "id": experiment.scenario_id,
-            "description": experiment.scenario_description,
-            "policy_question": experiment.scenario_policy_question
-        },
-        "criteria": [c.model_dump(mode="json") for c in session.criteria],
-        "preference_criteria": [c.model_dump(mode="json") for c in session.criteria],
-        "questions": [q.model_dump(mode="json") for q in session.questions],
-        "groups": [g.model_dump(mode="json") for g in session.stakeholder_groups],
-        "participants": [{"id": p.id, "group_id": p.stakeholder_group_id,
-                              "judgments": {r.question_id: float(r.preference.ahp_scale if hasattr(r.preference, "ahp_scale") else r.preference) for r in p.responses}}
-                             for p in session.participants],
-        "alternatives": [{"id": a.id, "name": a.name, "description": a.description,
-                              "values": {v.criterion_id: v.value for v in a.criterion_values}} for a in session.alternatives],
-            "processing": {"weighting_method": experiment.processing.weighting_method.method.value,
-                           "ranking_method": experiment.processing.ranking_method.method.value,
-                           "wd": experiment.processing.weighting_method.parameters.get("wd", "geometric")},
-            "consistency_threshold": experiment.execution.consistency_threshold,
-            "random_seed": experiment.execution.random_seed, "weights": None
-    }
 
 def _dependency_is_ready(result: RunResult) -> bool:
     if result.execution.get("numerical_status") != "completed":
@@ -289,6 +601,118 @@ def _create_run_result(run: PreparedRun) -> RunResult:
             "messages": [],
         },
     )
+
+def _build_ranking_weighting(
+    weighting,
+    *,
+    full_criterion_ids,
+    ranking_criterion_ids,
+    override=None,
+):
+    full_ids = list(full_criterion_ids)
+    selected_ids = list(ranking_criterion_ids)
+
+    if (
+        not full_ids
+        or len(full_ids) != len(set(full_ids))
+    ):
+        raise ValueError(
+            "Full criterion IDs must be nonempty and unique."
+        )
+
+    if (
+        not selected_ids
+        or len(selected_ids) != len(set(selected_ids))
+        or not set(selected_ids) <= set(full_ids)
+    ):
+        raise ValueError(
+            "Ranking criteria must be a nonempty, unique "
+            "subset of the full criteria."
+        )
+
+    items = weighting.criterion_weights
+    by_id = {
+        item.criterion_id: item
+        for item in items
+    }
+
+    if (
+        len(by_id) != len(items)
+        or set(by_id) != set(full_ids)
+    ):
+        raise ValueError(
+            "Original weights must cover every full criterion "
+            "exactly once."
+        )
+
+    original = validate_weight_vector(
+        [by_id[cid].weight for cid in full_ids],
+        expected_count=len(full_ids),
+        label="Original weighting",
+    )
+
+    original_by_id = dict(zip(full_ids, original))
+
+    if override is not None:
+        if (
+            not isinstance(override, dict)
+            or set(override) != set(selected_ids)
+        ):
+            raise ValueError(
+                "Explicit ranking weights must cover exactly "
+                "the selected criteria."
+            )
+
+        applied = validate_weight_vector(
+            [override[cid] for cid in selected_ids],
+            expected_count=len(selected_ids),
+            label="Explicit ranking weights",
+        )
+
+        source = "explicit"
+
+    else:
+        applied = np.asarray([
+            original_by_id[cid]
+            for cid in selected_ids
+        ])
+
+        if set(selected_ids) != set(full_ids):
+            retained_mass = float(applied.sum())
+
+            if retained_mass <= 0:
+                raise ValueError(
+                    "Retained criteria have no positive weight."
+                )
+
+            applied = applied / retained_mass
+            source = "restricted_and_renormalized"
+
+        else:
+            # Reordering is allowed; repairing the total is not.
+            source = "original"
+
+    ranking_weighting = weighting.model_copy(deep=True)
+
+    ranking_weighting.criterion_weights = [
+        CriterionWeight(
+            criterion_id=cid,
+            criterion_name=by_id[cid].criterion_name,
+            weight=float(value),
+        )
+        for cid, value in zip(
+            selected_ids,
+            applied,
+            strict=True,
+        )
+    ]
+
+    applied_by_id = dict(zip(
+        selected_ids,
+        applied.tolist(),
+    ))
+
+    return ranking_weighting, applied_by_id, source
 
 def provenance(experiment, inputs):
     def _hash(payload):
@@ -378,36 +802,43 @@ def calculate_entity(
             "source_case_key": reused_weighting.source_case_key,
         }
 
-    # Keep the full AHP weighting and consistency diagnostics as evidence.
-    # Only the TOPSIS inputs are restricted or overridden by ranking operations.
-    ranking_criterion_ids = (
-        [c.id for c in session.criteria]
-        if ranking_criterion_ids is None else ranking_criterion_ids
-    )
-    positions = {c.id: i for i, c in enumerate(session.criteria)}
-    applied = ({item.criterion_id: item.weight for item in weighting.criterion_weights}
-               if criterion_weight_override is None else criterion_weight_override)
-    values = np.array([applied[cid] for cid in ranking_criterion_ids], dtype=float)
-    if not np.all(np.isfinite(values)) or np.any(values < 0) or values.sum() <= 0:
-        raise ValueError("Ranking weights must be finite, nonnegative, with positive retained mass.")
-    values /= values.sum()
-    ranking_weighting = weighting.model_copy(deep=True)
-    ranking_weighting.criterion_weights = [
-        item.model_copy(update={"weight": float(value)})
-        for cid, value in zip(ranking_criterion_ids, values)
-        for item in weighting.criterion_weights if item.criterion_id == cid
+    full_ids = [
+        criterion.id
+        for criterion in session.criteria
     ]
-    # This projection is used only by the ranking service; the original session
-    # and its full pairwise question/response set remain unchanged.
+
+    ranking_criterion_ids = (
+        full_ids
+        if ranking_criterion_ids is None
+        else ranking_criterion_ids
+    )
+
+    ranking_weighting, applied_weights, weight_source = (
+        _build_ranking_weighting(
+            weighting,
+            full_criterion_ids=full_ids,
+            ranking_criterion_ids=ranking_criterion_ids,
+            override=criterion_weight_override,
+        )
+    )
+
+    positions = {
+        criterion_id: index
+        for index, criterion_id in enumerate(full_ids)
+    }
+
     ranking_view = session.model_copy(update={
-        "criteria": [session.criteria[positions[cid]] for cid in ranking_criterion_ids],
+        "criteria": [
+            session.criteria[positions[cid]]
+            for cid in ranking_criterion_ids
+        ],
     })
-    metadata["ranking_criterion_ids"] = list(ranking_criterion_ids)
-    metadata["applied_criterion_weights"] = dict(zip(ranking_criterion_ids, values.tolist()))
-    if criterion_weight_override is not None:
-        metadata["ranking_weight_source"] = "explicit"
-    elif ranking_criterion_ids != list(positions):
-        metadata["ranking_weight_source"] = "restricted_and_renormalized"
+
+    metadata["ranking_criterion_ids"] = list(
+        ranking_criterion_ids
+    )
+    metadata["applied_criterion_weights"] = applied_weights
+    metadata["ranking_weight_source"] = weight_source
 
     ranking = MCDMService.generate_ranking(
         session=ranking_view,
