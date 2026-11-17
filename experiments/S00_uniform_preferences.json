@@ -1,349 +1,349 @@
 {
-  "schema_version": "3.0",
-  "experiment_id": "S00",
-  "name": "Uniform Stakeholder Preferences",
-  "description": "Five equally weighted stakeholder groups submit identical neutral judgments for four criteria and rank five synthetic transportation alternatives.",
-  "purpose": "Verify neutral AHP matrix construction, two-stage stakeholder aggregation, uniform criterion weights, zero inconsistency, and valid TOPSIS results before introducing experimental interventions.",
-  "scenario": {
-    "id": "transportation_prioritization",
-    "description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
-    "policy_question": "How should a municipal government prioritize transportation improvement initiatives when balancing implementation costs, public accessibility, environmental benefits, and implementation time?"
-  },
-  "resources": {
-    "criteria": "../criteria/transport_v1.json",
-    "alternatives": "../alternative/transport_core_v1.json",
-    "dataset": "../datasets/transport_core_v1.csv",
-    "dataset_join_key": "alternative_id"
-  },
-  "defaults": {
-    "pipeline": "mcdm",
-    "seed": 123456,
-    "repetitions": 1,
-    "processing": {
-      "weighting": {
-        "method": "ahp",
-        "parameters": {
-          "derivation": "mean"
-        }
-      },
-      "ranking": {
-        "method": "topsis",
-        "parameters": {
-          "normalization": "vector"
-        }
-      },
-      "aggregation": {
-        "within_group": "geometric_mean",
-        "between_groups": "weighted_geometric_mean",
-        "group_power_normalization": "represented_groups",
-        "empty_group_policy": "exclude"
-      },
-      "consistency": {
-        "threshold": 0.1,
-        "on_exceedance": "retain_and_flag"
-      }
-    },
-    "ai": {
-      "enabled": false
-    }
-  },
-  "stakeholders": {
-    "judgment_encoding": "pairwise_preference",
-    "stakeholder_groups": [
-      {
-        "id": "community_residents",
-        "name": "Community Residents",
-        "description": "Residents who use or are affected by the city transportation network.",
-        "voting_power": 0.2
-      },
-      {
-        "id": "transportation_department",
-        "name": "Transportation Department",
-        "description": "City staff responsible for transportation planning, operations, and infrastructure.",
-        "voting_power": 0.2
-      },
-      {
-        "id": "city_government",
-        "name": "City Government",
-        "description": "Elected officials and municipal leadership responsible for citywide policy and resource decisions.",
-        "voting_power": 0.2
-      },
-      {
-        "id": "environmental_advocates",
-        "name": "Environmental Advocates",
-        "description": "Advocates focused on environmental impacts and sustainable transportation.",
-        "voting_power": 0.2
-      },
-      {
-        "id": "business_community",
-        "name": "Business Community",
-        "description": "Local businesses and business organizations affected by transportation access and investment.",
-        "voting_power": 0.2
-      }
-    ],
-    "participants": {
-      "predefined": [
-        {
-          "participant_id": "community_residents_p01",
-          "group_id": "community_residents",
-          "judgments": {
-            "q1": 0,
-            "q2": 0,
-            "q3": 0,
-            "q4": 0,
-            "q5": 0,
-            "q6": 0
-          }
-        },
-        {
-          "participant_id": "transportation_department_p01",
-          "group_id": "transportation_department",
-          "judgments": {
-            "q1": 0,
-            "q2": 0,
-            "q3": 0,
-            "q4": 0,
-            "q5": 0,
-            "q6": 0
-          }
-        },
-        {
-          "participant_id": "city_government_p01",
-          "group_id": "city_government",
-          "judgments": {
-            "q1": 0,
-            "q2": 0,
-            "q3": 0,
-            "q4": 0,
-            "q5": 0,
-            "q6": 0
-          }
-        },
-        {
-          "participant_id": "environmental_advocates_p01",
-          "group_id": "environmental_advocates",
-          "judgments": {
-            "q1": 0,
-            "q2": 0,
-            "q3": 0,
-            "q4": 0,
-            "q5": 0,
-            "q6": 0
-          }
-        },
-        {
-          "participant_id": "business_community_p01",
-          "group_id": "business_community",
-          "judgments": {
-            "q1": 0,
-            "q2": 0,
-            "q3": 0,
-            "q4": 0,
-            "q5": 0,
-            "q6": 0
-          }
-        }
-      ],
-      "generators": [],
-      "combine": "append",
-      "on_id_collision": "error"
-    },
-    "scale_conversion": {
-      "from_encoding": "saaty_ratio",
-      "method": "nearest_log_distance",
-      "tie_break": "closest_to_equal_importance",
-      "original_judgments": {
-        "community_residents_p01": {
-          "q1": 1.0,
-          "q2": 1.0,
-          "q3": 1.0,
-          "q4": 1.0,
-          "q5": 1.0,
-          "q6": 1.0
-        },
-        "transportation_department_p01": {
-          "q1": 1.0,
-          "q2": 1.0,
-          "q3": 1.0,
-          "q4": 1.0,
-          "q5": 1.0,
-          "q6": 1.0
-        },
-        "city_government_p01": {
-          "q1": 1.0,
-          "q2": 1.0,
-          "q3": 1.0,
-          "q4": 1.0,
-          "q5": 1.0,
-          "q6": 1.0
-        },
-        "environmental_advocates_p01": {
-          "q1": 1.0,
-          "q2": 1.0,
-          "q3": 1.0,
-          "q4": 1.0,
-          "q5": 1.0,
-          "q6": 1.0
-        },
-        "business_community_p01": {
-          "q1": 1.0,
-          "q2": 1.0,
-          "q3": 1.0,
-          "q4": 1.0,
-          "q5": 1.0,
-          "q6": 1.0
-        }
-      }
-    }
-  },
-  "baseline": {
-    "case": "S00/control"
-  },
-  "assertions": [
-    {
-      "id": "weights_normalized",
-      "check": "normalized_weights",
-      "stage": "calculation",
-      "parameters": {},
-      "expected": true,
-      "severity": "error",
-      "atol": 1e-10,
-      "rtol": 0
-    },
-    {
-      "id": "scores_bounded",
-      "check": "bounded_topsis_scores",
-      "stage": "calculation",
-      "parameters": {},
-      "expected": true,
-      "severity": "error"
-    },
-    {
-      "id": "valid_judgment_ratios",
-      "check": "submitted_values_in_saaty_domain",
-      "stage": "calculation",
-      "parameters": {},
-      "expected": true,
-      "severity": "error"
-    },
-    {
-      "id": "reciprocal_matrices",
-      "check": "reciprocal_matrices",
-      "stage": "calculation",
-      "parameters": {},
-      "expected": true,
-      "severity": "error",
-      "atol": 1e-10,
-      "rtol": 0
-    }
-  ],
-  "cases": [
-    {
-      "case_id": "control",
-      "name": "Uniform preferences control",
-      "description": "One predefined participant per group; every left-to-right criterion importance ratio is 1 and every group has voting power 0.2.",
-      "purpose": "Provide the uniform-preference baseline for numerical checks and later experiment comparisons.",
-      "hypothesis": "All participant and group matrices are identical, all consistency ratios are zero, and all four session criterion weights are 0.25. Equal criterion importance does not require equal alternative scores.",
-      "result_dependencies": [],
-      "operations": [],
-      "runtime_operations": [],
-      "reuse": {},
-      "comparisons": [],
-      "assertions": [
-        {
-          "id": "one_participant_per_group",
-          "check": "participant_counts_equal",
-          "stage": "calculation",
-          "parameters": {
-            "counts": {
-              "community_residents": 1,
-              "transportation_department": 1,
-              "city_government": 1,
-              "environmental_advocates": 1,
-              "business_community": 1
-            }
-          },
-          "expected": true,
-          "severity": "error"
-        },
-        {
-          "id": "identical_participant_matrices",
-          "check": "all_participant_pairwise_matrices_equal",
-          "stage": "calculation",
-          "parameters": {},
-          "expected": true,
-          "severity": "error",
-          "atol": 1e-10,
-          "rtol": 0
-        },
-        {
-          "id": "zero_participant_inconsistency",
-          "check": "all_participant_consistency_ratios",
-          "stage": "calculation",
-          "parameters": {},
-          "expected": 0.0,
-          "severity": "error",
-          "atol": 1e-10,
-          "rtol": 0
-        },
-        {
-          "id": "uniform_group_weights",
-          "check": "group_weights_equal",
-          "stage": "calculation",
-          "parameters": {
-            "expected_weights": {
-              "C1": 0.25,
-              "C2": 0.25,
-              "C3": 0.25,
-              "C4": 0.25
-            }
-          },
-          "expected": true,
-          "severity": "error",
-          "atol": 1e-10,
-          "rtol": 0
-        },
-        {
-          "id": "uniform_session_weights",
-          "check": "session_weights_equal",
-          "stage": "calculation",
-          "parameters": {
-            "expected_weights": {
-              "C1": 0.25,
-              "C2": 0.25,
-              "C3": 0.25,
-              "C4": 0.25
-            }
-          },
-          "expected": true,
-          "severity": "error",
-          "atol": 1e-10,
-          "rtol": 0
-        },
-        {
-          "id": "neutral_aggregate_matrix",
-          "check": "session_aggregate_pairwise_matrix_all_ones",
-          "stage": "calculation",
-          "parameters": {},
-          "expected": true,
-          "severity": "error",
-          "atol": 1e-10,
-          "rtol": 0
-        }
-      ]
-    }
-  ],
-  "output": {
-    "directory": "../results",
-    "save_resolved_inputs": true,
-    "save_generated_participants": true,
-    "save_intermediate_matrices": true,
-    "save_per_participant_results": true,
-    "save_per_group_results": true,
-    "save_topsis_details": true,
-    "save_comparisons": true,
-    "save_assertion_results": true,
-    "save_provenance": true,
-    "save_ai_calls": false
-  }
+	"schema_version": "3.0",
+	"experiment_id": "S00",
+	"name": "Uniform Stakeholder Preferences",
+	"description": "Five equally weighted stakeholder groups submit identical neutral judgments for four criteria and rank five synthetic transportation alternatives.",
+	"purpose": "Verify neutral AHP matrix construction, two-stage stakeholder aggregation, uniform criterion weights, zero inconsistency, and valid TOPSIS results before introducing experimental interventions.",
+	"scenario": {
+		"id": "transportation_prioritization",
+		"description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
+		"policy_question": "How should a municipal government prioritize transportation improvement initiatives when balancing implementation costs, public accessibility, environmental benefits, and implementation time?"
+	},
+	"resources": {
+		"criteria": "../criteria/transport_v1.json",
+		"alternatives": "../alternative/transport_core_v1.json",
+		"dataset": "../datasets/transport_core_v1.csv",
+		"dataset_join_key": "alternative_id"
+	},
+	"defaults": {
+		"pipeline": "mcdm",
+		"seed": 123456,
+		"repetitions": 1,
+		"processing": {
+			"weighting": {
+				"method": "ahp",
+				"parameters": {
+					"derivation": "mean"
+				}
+			},
+			"ranking": {
+				"method": "topsis",
+				"parameters": {
+					"normalization": "vector"
+				}
+			},
+			"aggregation": {
+				"within_group": "geometric_mean",
+				"between_groups": "weighted_geometric_mean",
+				"group_power_normalization": "represented_groups",
+				"empty_group_policy": "exclude"
+			},
+			"consistency": {
+				"threshold": 0.1,
+				"on_exceedance": "retain_and_flag"
+			}
+		},
+		"ai": {
+			"enabled": false
+		}
+	},
+	"stakeholders": {
+		"judgment_encoding": "pairwise_preference",
+		"stakeholder_groups": [
+			{
+				"id": "community_residents",
+				"name": "Community Residents",
+				"description": "Residents who use or are affected by the city transportation network.",
+				"voting_power": 0.2
+			},
+			{
+				"id": "transportation_department",
+				"name": "Transportation Department",
+				"description": "City staff responsible for transportation planning, operations, and infrastructure.",
+				"voting_power": 0.2
+			},
+			{
+				"id": "city_government",
+				"name": "City Government",
+				"description": "Elected officials and municipal leadership responsible for citywide policy and resource decisions.",
+				"voting_power": 0.2
+			},
+			{
+				"id": "environmental_advocates",
+				"name": "Environmental Advocates",
+				"description": "Advocates focused on environmental impacts and sustainable transportation.",
+				"voting_power": 0.2
+			},
+			{
+				"id": "business_community",
+				"name": "Business Community",
+				"description": "Local businesses and business organizations affected by transportation access and investment.",
+				"voting_power": 0.2
+			}
+		],
+		"participants": {
+			"predefined": [
+				{
+					"participant_id": "community_residents_p01",
+					"group_id": "community_residents",
+					"judgments": {
+						"q1": 0,
+						"q2": 0,
+						"q3": 0,
+						"q4": 0,
+						"q5": 0,
+						"q6": 0
+					}
+				},
+				{
+					"participant_id": "transportation_department_p01",
+					"group_id": "transportation_department",
+					"judgments": {
+						"q1": 0,
+						"q2": 0,
+						"q3": 0,
+						"q4": 0,
+						"q5": 0,
+						"q6": 0
+					}
+				},
+				{
+					"participant_id": "city_government_p01",
+					"group_id": "city_government",
+					"judgments": {
+						"q1": 0,
+						"q2": 0,
+						"q3": 0,
+						"q4": 0,
+						"q5": 0,
+						"q6": 0
+					}
+				},
+				{
+					"participant_id": "environmental_advocates_p01",
+					"group_id": "environmental_advocates",
+					"judgments": {
+						"q1": 0,
+						"q2": 0,
+						"q3": 0,
+						"q4": 0,
+						"q5": 0,
+						"q6": 0
+					}
+				},
+				{
+					"participant_id": "business_community_p01",
+					"group_id": "business_community",
+					"judgments": {
+						"q1": 0,
+						"q2": 0,
+						"q3": 0,
+						"q4": 0,
+						"q5": 0,
+						"q6": 0
+					}
+				}
+			],
+			"generators": [],
+			"combine": "append",
+			"on_id_collision": "error"
+		},
+		"scale_conversion": {
+			"from_encoding": "saaty_ratio",
+			"method": "nearest_log_distance",
+			"tie_break": "closest_to_equal_importance",
+			"original_judgments": {
+				"community_residents_p01": {
+					"q1": 1.0,
+					"q2": 1.0,
+					"q3": 1.0,
+					"q4": 1.0,
+					"q5": 1.0,
+					"q6": 1.0
+				},
+				"transportation_department_p01": {
+					"q1": 1.0,
+					"q2": 1.0,
+					"q3": 1.0,
+					"q4": 1.0,
+					"q5": 1.0,
+					"q6": 1.0
+				},
+				"city_government_p01": {
+					"q1": 1.0,
+					"q2": 1.0,
+					"q3": 1.0,
+					"q4": 1.0,
+					"q5": 1.0,
+					"q6": 1.0
+				},
+				"environmental_advocates_p01": {
+					"q1": 1.0,
+					"q2": 1.0,
+					"q3": 1.0,
+					"q4": 1.0,
+					"q5": 1.0,
+					"q6": 1.0
+				},
+				"business_community_p01": {
+					"q1": 1.0,
+					"q2": 1.0,
+					"q3": 1.0,
+					"q4": 1.0,
+					"q5": 1.0,
+					"q6": 1.0
+				}
+			}
+		}
+	},
+	"baseline": {
+		"case": "S00/control"
+	},
+	"assertions": [
+		{
+			"id": "weights_normalized",
+			"check": "normalized_weights",
+			"stage": "calculation",
+			"parameters": {},
+			"expected": true,
+			"severity": "error",
+			"atol": 1e-10,
+			"rtol": 0
+		},
+		{
+			"id": "scores_bounded",
+			"check": "bounded_topsis_scores",
+			"stage": "calculation",
+			"parameters": {},
+			"expected": true,
+			"severity": "error"
+		},
+		{
+			"id": "valid_judgment_ratios",
+			"check": "submitted_values_in_saaty_domain",
+			"stage": "calculation",
+			"parameters": {},
+			"expected": true,
+			"severity": "error"
+		},
+		{
+			"id": "reciprocal_matrices",
+			"check": "reciprocal_matrices",
+			"stage": "calculation",
+			"parameters": {},
+			"expected": true,
+			"severity": "error",
+			"atol": 1e-10,
+			"rtol": 0
+		}
+	],
+	"cases": [
+		{
+			"case_id": "control",
+			"name": "Uniform preferences control",
+			"description": "One predefined participant per group; every left-to-right criterion importance ratio is 1 and every group has voting power 0.2.",
+			"purpose": "Provide the uniform-preference baseline for numerical checks and later experiment comparisons.",
+			"hypothesis": "All participant and group matrices are identical, all consistency ratios are zero, and all four session criterion weights are 0.25. Equal criterion importance does not require equal alternative scores.",
+			"result_dependencies": [],
+			"operations": [],
+			"runtime_operations": [],
+			"reuse": {},
+			"comparisons": [],
+			"assertions": [
+				{
+					"id": "one_participant_per_group",
+					"check": "participant_counts_equal",
+					"stage": "calculation",
+					"parameters": {
+						"counts": {
+							"community_residents": 1,
+							"transportation_department": 1,
+							"city_government": 1,
+							"environmental_advocates": 1,
+							"business_community": 1
+						}
+					},
+					"expected": true,
+					"severity": "error"
+				},
+				{
+					"id": "identical_participant_matrices",
+					"check": "all_participant_pairwise_matrices_equal",
+					"stage": "calculation",
+					"parameters": {},
+					"expected": true,
+					"severity": "error",
+					"atol": 1e-10,
+					"rtol": 0
+				},
+				{
+					"id": "zero_participant_inconsistency",
+					"check": "all_participant_consistency_ratios",
+					"stage": "calculation",
+					"parameters": {},
+					"expected": 0.0,
+					"severity": "error",
+					"atol": 1e-10,
+					"rtol": 0
+				},
+				{
+					"id": "uniform_group_weights",
+					"check": "group_weights_equal",
+					"stage": "calculation",
+					"parameters": {
+						"expected_weights": {
+							"C1": 0.25,
+							"C2": 0.25,
+							"C3": 0.25,
+							"C4": 0.25
+						}
+					},
+					"expected": true,
+					"severity": "error",
+					"atol": 1e-10,
+					"rtol": 0
+				},
+				{
+					"id": "uniform_session_weights",
+					"check": "session_weights_equal",
+					"stage": "calculation",
+					"parameters": {
+						"expected_weights": {
+							"C1": 0.25,
+							"C2": 0.25,
+							"C3": 0.25,
+							"C4": 0.25
+						}
+					},
+					"expected": true,
+					"severity": "error",
+					"atol": 1e-10,
+					"rtol": 0
+				},
+				{
+					"id": "neutral_aggregate_matrix",
+					"check": "session_aggregate_pairwise_matrix_all_ones",
+					"stage": "calculation",
+					"parameters": {},
+					"expected": true,
+					"severity": "error",
+					"atol": 1e-10,
+					"rtol": 0
+				}
+			]
+		}
+	],
+	"output": {
+		"directory": "../results",
+		"save_resolved_inputs": true,
+		"save_generated_participants": true,
+		"save_intermediate_matrices": true,
+		"save_per_participant_results": true,
+		"save_per_group_results": true,
+		"save_topsis_details": true,
+		"save_comparisons": true,
+		"save_assertion_results": true,
+		"save_provenance": true,
+		"save_ai_calls": false
+	}
 }
