@@ -44,7 +44,18 @@
       }
     },
     "ai": {
-      "enabled": false
+      "enabled": false,
+      "repetitions": 1,
+      "layers": [
+        "data_comprehension",
+        "data_explanation_reporting",
+        "policy_decision_advisory"
+      ],
+      "provider": null,
+      "model": null,
+      "parameters": {},
+      "prompt_overrides": {},
+      "reported_result_interventions": []
     }
   },
   "stakeholders": {
@@ -618,6 +629,7 @@
     "save_comparisons": true,
     "save_assertion_results": true,
     "save_provenance": true,
-    "save_ai_calls": false
+    "save_ai_calls": false,
+    "save_ai_responses": false
   }
 }

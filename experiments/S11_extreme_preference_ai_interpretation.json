@@ -1,0 +1,450 @@
+{
+  "schema_version": "3.0",
+  "experiment_id": "S11",
+  "name": "Extreme Preference AI Interpretation",
+  "description": "Calculate the MAX and MIN numerical conditions and produce a separate three-layer AI result for each case using default prompts.",
+  "purpose": "Observe how extreme preference direction and consistency warnings affect AI interpretation, explanation, and policy advice relative to S10.",
+  "scenario": {
+    "id": "transportation_prioritization",
+    "description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
+    "policy_question": "How should a municipal government prioritize transportation improvement initiatives when balancing implementation costs, public accessibility, environmental benefits, and implementation time?"
+  },
+  "resources": {
+    "criteria": "../criteria/transport_v1.json",
+    "alternatives": "../alternative/transport_core_v1.json",
+    "dataset": "../datasets/transport_core_v1.csv",
+    "dataset_join_key": "alternative_id"
+  },
+  "defaults": {
+    "pipeline": "ai-mcdm",
+    "seed": 123456,
+    "repetitions": 1,
+    "processing": {
+      "weighting": {
+        "method": "ahp",
+        "parameters": {
+          "derivation": "mean"
+        }
+      },
+      "ranking": {
+        "method": "topsis",
+        "parameters": {
+          "normalization": "vector"
+        }
+      },
+      "aggregation": {
+        "within_group": "geometric_mean",
+        "between_groups": "weighted_geometric_mean",
+        "group_power_normalization": "represented_groups",
+        "empty_group_policy": "exclude"
+      },
+      "consistency": {
+        "threshold": 0.1,
+        "on_exceedance": "retain_and_flag"
+      }
+    },
+    "ai": {
+      "enabled": true,
+      "repetitions": 1,
+      "layers": [
+        "data_comprehension",
+        "data_explanation_reporting",
+        "policy_decision_advisory"
+      ],
+      "provider": null,
+      "model": null,
+      "parameters": {},
+      "prompt_overrides": {},
+      "reported_result_interventions": []
+    }
+  },
+  "stakeholders": {
+    "judgment_encoding": "pairwise_preference",
+    "stakeholder_groups": [
+      {
+        "id": "community_residents",
+        "name": "Community Residents",
+        "description": "Residents who use or are affected by the city transportation network.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "transportation_department",
+        "name": "Transportation Department",
+        "description": "City staff responsible for transportation planning, operations, and infrastructure.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "city_government",
+        "name": "City Government",
+        "description": "Elected officials and municipal leadership responsible for citywide policy and resource decisions.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "environmental_advocates",
+        "name": "Environmental Advocates",
+        "description": "Advocates focused on environmental impacts and sustainable transportation.",
+        "voting_power": 0.2
+      },
+      {
+        "id": "business_community",
+        "name": "Business Community",
+        "description": "Local businesses and business organizations affected by transportation access and investment.",
+        "voting_power": 0.2
+      }
+    ],
+    "participants": {
+      "predefined": [
+        {
+          "participant_id": "community_residents_p01",
+          "group_id": "community_residents",
+          "judgments": {
+            "q1": 4,
+            "q2": 4,
+            "q3": 4,
+            "q4": 4,
+            "q5": 4,
+            "q6": 4
+          }
+        },
+        {
+          "participant_id": "transportation_department_p01",
+          "group_id": "transportation_department",
+          "judgments": {
+            "q1": 4,
+            "q2": 4,
+            "q3": 4,
+            "q4": 4,
+            "q5": 4,
+            "q6": 4
+          }
+        },
+        {
+          "participant_id": "city_government_p01",
+          "group_id": "city_government",
+          "judgments": {
+            "q1": 4,
+            "q2": 4,
+            "q3": 4,
+            "q4": 4,
+            "q5": 4,
+            "q6": 4
+          }
+        },
+        {
+          "participant_id": "environmental_advocates_p01",
+          "group_id": "environmental_advocates",
+          "judgments": {
+            "q1": 4,
+            "q2": 4,
+            "q3": 4,
+            "q4": 4,
+            "q5": 4,
+            "q6": 4
+          }
+        },
+        {
+          "participant_id": "business_community_p01",
+          "group_id": "business_community",
+          "judgments": {
+            "q1": 4,
+            "q2": 4,
+            "q3": 4,
+            "q4": 4,
+            "q5": 4,
+            "q6": 4
+          }
+        }
+      ],
+      "generators": [],
+      "combine": "append",
+      "on_id_collision": "error"
+    }
+  },
+  "baseline": {
+    "case": "S10/control"
+  },
+  "assertions": [
+    {
+      "id": "weights_normalized",
+      "check": "normalized_weights",
+      "stage": "calculation",
+      "parameters": {},
+      "expected": true,
+      "severity": "error",
+      "atol": 1e-10,
+      "rtol": 0
+    },
+    {
+      "id": "scores_bounded",
+      "check": "bounded_topsis_scores",
+      "stage": "calculation",
+      "parameters": {},
+      "expected": true,
+      "severity": "error"
+    },
+    {
+      "id": "valid_judgment_ratios",
+      "check": "submitted_values_in_saaty_domain",
+      "stage": "calculation",
+      "parameters": {},
+      "expected": true,
+      "severity": "error"
+    },
+    {
+      "id": "reciprocal_matrices",
+      "check": "reciprocal_matrices",
+      "stage": "calculation",
+      "parameters": {},
+      "expected": true,
+      "severity": "error",
+      "atol": 1e-10,
+      "rtol": 0
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "max",
+      "name": "MAX numerical evidence with default AI prompts",
+      "description": "Every participant submits code 4 for all six questions; the code maps to a ratio of 9. Produce an independent AI interpretation, explanatory report, and policy advice; no prior AI output from the opposite case is supplied.",
+      "purpose": "Observe the effect of this numerical evidence condition while keeping prompts and effective model/provider settings fixed to the baseline.",
+      "hypothesis": "All participant matrices match within this case, every participant is inconsistent and retained, and session weights differ from the opposite boundary case.",
+      "legacy_variant_id": "S02_MAX",
+      "result_dependencies": [],
+      "operations": [],
+      "runtime_operations": [],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_opposite_boundary",
+          "reference": "S11/min",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_uniform_ai_baseline",
+          "reference": "S10/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "identical_participant_matrices",
+          "check": "all_participant_pairwise_matrices_equal",
+          "stage": "calculation",
+          "parameters": {},
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "all_participants_inconsistent",
+          "check": "inconsistent_participant_count",
+          "stage": "calculation",
+          "parameters": {},
+          "expected": 5,
+          "severity": "error"
+        },
+        {
+          "id": "inconsistent_inputs_retained",
+          "check": "inconsistent_inputs_retained_and_flagged",
+          "stage": "calculation",
+          "parameters": {},
+          "expected": true,
+          "severity": "error"
+        },
+        {
+          "id": "opposite_weights_distinct",
+          "check": "weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S11/min"
+          },
+          "expected": false,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "external_reference_comparison",
+          "check": "computed_results_match_independent_reference_per_variant",
+          "stage": "calculation",
+          "parameters": {},
+          "expected": true,
+          "severity": "error",
+          "deferred": true,
+          "reason": "Comparison against external PoliInsight results remains outside the independent reference experiment."
+        }
+      ]
+    },
+    {
+      "case_id": "min",
+      "name": "MIN numerical evidence with default AI prompts",
+      "description": "Every participant submits code -4 for all six questions; the code maps to a ratio of 0.1111111111111111. Produce an independent AI interpretation, explanatory report, and policy advice; no prior AI output from the opposite case is supplied.",
+      "purpose": "Observe the effect of this numerical evidence condition while keeping prompts and effective model/provider settings fixed to the baseline.",
+      "hypothesis": "All participant matrices match within this case, every participant is inconsistent and retained, and session weights differ from the opposite boundary case.",
+      "legacy_variant_id": "S02_MIN",
+      "result_dependencies": [],
+      "operations": [
+        {
+          "type": "set_group_judgments",
+          "judgments": {
+            "community_residents": {
+              "q1": -4,
+              "q2": -4,
+              "q3": -4,
+              "q4": -4,
+              "q5": -4,
+              "q6": -4
+            },
+            "transportation_department": {
+              "q1": -4,
+              "q2": -4,
+              "q3": -4,
+              "q4": -4,
+              "q5": -4,
+              "q6": -4
+            },
+            "city_government": {
+              "q1": -4,
+              "q2": -4,
+              "q3": -4,
+              "q4": -4,
+              "q5": -4,
+              "q6": -4
+            },
+            "environmental_advocates": {
+              "q1": -4,
+              "q2": -4,
+              "q3": -4,
+              "q4": -4,
+              "q5": -4,
+              "q6": -4
+            },
+            "business_community": {
+              "q1": -4,
+              "q2": -4,
+              "q3": -4,
+              "q4": -4,
+              "q5": -4,
+              "q6": -4
+            }
+          }
+        }
+      ],
+      "runtime_operations": [],
+      "reuse": {},
+      "comparisons": [
+        {
+          "id": "against_opposite_boundary",
+          "reference": "S11/max",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        },
+        {
+          "id": "against_uniform_ai_baseline",
+          "reference": "S10/control",
+          "metrics": [
+            "weight_delta",
+            "score_delta",
+            "winner_changed",
+            "spearman_rho",
+            "kendall_tau_b"
+          ],
+          "alternative_alignment": "require_identical_ids",
+          "criterion_alignment": "require_identical_ids",
+          "tie_atol": 1e-12
+        }
+      ],
+      "assertions": [
+        {
+          "id": "identical_participant_matrices",
+          "check": "all_participant_pairwise_matrices_equal",
+          "stage": "calculation",
+          "parameters": {},
+          "expected": true,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "all_participants_inconsistent",
+          "check": "inconsistent_participant_count",
+          "stage": "calculation",
+          "parameters": {},
+          "expected": 5,
+          "severity": "error"
+        },
+        {
+          "id": "inconsistent_inputs_retained",
+          "check": "inconsistent_inputs_retained_and_flagged",
+          "stage": "calculation",
+          "parameters": {},
+          "expected": true,
+          "severity": "error"
+        },
+        {
+          "id": "opposite_weights_distinct",
+          "check": "weights_equal",
+          "stage": "comparison",
+          "parameters": {
+            "reference": "S11/max"
+          },
+          "expected": false,
+          "severity": "error",
+          "atol": 1e-10,
+          "rtol": 0
+        },
+        {
+          "id": "external_reference_comparison",
+          "check": "computed_results_match_independent_reference_per_variant",
+          "stage": "calculation",
+          "parameters": {},
+          "expected": true,
+          "severity": "error",
+          "deferred": true,
+          "reason": "Comparison against external PoliInsight results remains outside the independent reference experiment."
+        }
+      ]
+    }
+  ],
+  "output": {
+    "directory": "../results",
+    "save_resolved_inputs": true,
+    "save_generated_participants": true,
+    "save_intermediate_matrices": true,
+    "save_per_participant_results": true,
+    "save_per_group_results": true,
+    "save_topsis_details": true,
+    "save_comparisons": true,
+    "save_assertion_results": true,
+    "save_provenance": true,
+    "save_ai_calls": true,
+    "save_ai_responses": true
+  }
+}
