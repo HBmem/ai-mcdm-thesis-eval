@@ -68,8 +68,6 @@ def check_model_access(config: AIConfig, client):
     except APIError:
         raise PreflightError("AI access verification returned an invalid provider response.", 1) from None
 
-    print(response)
-
     try:
         if not response.choices:
             raise ValueError("Missing completion choices.")
@@ -91,13 +89,13 @@ def check_model_access(config: AIConfig, client):
             "output_tokens": getattr(usage, "completion_tokens", None)
         }
         record = PreflightRecord(
-            all_id=uuid4().hex,
+            call_id=uuid4().hex,
             started_at=started_at,
             completed_at=timestamp(),
             duration_seconds=time.perf_counter()-tick,
             messages=request["messages"],
             input=request,
-            configuration={**config.safe(), "timeout": 30, "max_retries": 0, "max_tokens": 8},
+            configuration={**config.audit_metadata(), "timeout": 30, "max_retries": 0, "max_tokens": 8},
             raw_output=content, response={
                 "id": receipt["response_id"],
                 "model": receipt["returned_model"],

@@ -9,7 +9,8 @@ from src.experiments.loader import load_experiments
 from src.experiments.runner import prepare_runs, execute_experiments
 from src.experiments.storage import ArtifactWriteError
 from src.ai.config import AIConfig
-from src.ai.preflight import PreflightError, check_model_access
+from src.ai.component import build_ai_component
+from src.ai.preflight import PreflightError
 
 
 ROOT = Path(__file__).resolve().parent
@@ -52,24 +53,18 @@ def main(argv=None):
 
     try:
         with ExitStack() as stack:
-            execution_options = {}
+            ai_component = None
 
             if args.ai:
                 config = AIConfig.from_env(ROOT / ".env")
-                client = stack.enter_context(config.client())
-
-                preflight = check_model_access(config, client)
-
-                execution_options = {
-                    "ai_config": config,
-                    "ai_client": client,
-                    "preflight": preflight,
-                }
+                print("Checking AI key and model access...")
+                ai_component = stack.enter_context(build_ai_component(config))
+                print("AI access check passed.")
 
             batch_directory, results = execute_experiments(
                 runs,
                 args.output,
-                **execution_options,
+                ai_component=ai_component,
             )
 
             for result in results:

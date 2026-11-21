@@ -154,6 +154,11 @@ class EntityMetadata:
 
     stages: EntityStages = field(default_factory=EntityStages)
 
+    # The numerical aggregation layer should record the actual normalized share.
+    # None means it was not supplied; the DCL must never infer a value or treat it
+    # as zero. Adding this optional slot does not change aggregation calculations.
+    effective_voting_power: float | None = None
+
 @dataclass
 class EntityCalculation:
     entity_id: str
