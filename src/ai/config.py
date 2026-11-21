@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Self
 from urllib.parse import urlsplit
+from enum import StrEnum
 
 from dotenv import load_dotenv
 
@@ -13,16 +14,57 @@ from dotenv import load_dotenv
 DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
+class AIProvider(StrEnum):
+    OPENROUTER = "openrouter"
+    OLLAMA = "ollama"
+    OPENAI = "openai"
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderProfile:
+    base_url: str
+    api_key_env: str
+
+
+PROVIDERS = {
+    AIProvider.OPENROUTER: ProviderProfile(
+        base_url="https://openrouter.ai/api/v1",
+        api_key_env="OPENROUTER_API_KEY",
+    ),
+    AIProvider.OLLAMA: ProviderProfile(
+        base_url="https://ollama.com/v1",
+        api_key_env="OLLAMA_API_KEY",
+    ),
+    AIProvider.OPENAI: ProviderProfile(
+        base_url="https://api.openai.com/v1",
+        api_key_env="OPENAI_API_KEY",
+    ),
+}
+
+
 @dataclass(frozen=True, slots=True)
 class AIConfig:
+    provider: AIProvider
     model: str
-    base_url: str = "https://ollama.com/v1"
-    api_key: str = field(default="", repr=False)
+    base_url: str
+    api_key: str = field(repr=False)
     timeout: float = 120.0
-
-    # Application-level retries, not OpenAI SDK retries.
     max_retries: int = 2
+    app_url: str | None = None
+    app_name: str | None = None
 
+    @property
+    def client_headers(self) -> dict[str, str]:
+        if self.provider is not AIProvider.OPENROUTER:
+            return {}
+
+        headers = {}
+        if self.app_url:
+            headers["HTTP-Referer"] = self.app_url
+        if self.app_name:
+            headers["X-Title"] = self.app_name
+        return headers
+    
     @classmethod
     def from_env(
         cls,

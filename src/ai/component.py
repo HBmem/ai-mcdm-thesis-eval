@@ -27,9 +27,9 @@ def create_client(config: AIConfig) -> OpenAI:
         base_url=config.base_url,
         api_key=config.api_key,
         timeout=config.timeout,
-
         # Retries will be managed and audited by the application.
         max_retries=0,
+        default_headers=config.client_headers or None,
     )
 
 

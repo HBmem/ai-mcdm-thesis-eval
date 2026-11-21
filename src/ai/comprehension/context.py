@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from dataclasses import fields, is_dataclass
 
 from src.ai.comprehension.models import (
     DCLStageInput,
@@ -60,6 +61,17 @@ def _resolve_path(
                 raise EvidenceResolutionError(
                     f"Unknown evidence field: {part}"
                 )
+
+            current = getattr(current, part)
+
+        elif (isinstance(part, str) and is_dataclass(current) and not isinstance(current, type)):
+            field_names = {
+                field.name
+                for field in fields(current)
+            }
+
+            if part not in field_names:
+                raise EvidenceResolutionError(f"Unknown evidence dataclass field: {part}")
 
             current = getattr(current, part)
 

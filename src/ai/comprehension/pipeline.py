@@ -7,6 +7,8 @@ from uuid import uuid4, uuid5, NAMESPACE_URL
 
 from src.ai.backend import BackendCallError, StructuredAIBackend, StructuredGeneration
 from src.ai.comprehension.models import DCLCallError, DCLCallRecord, DCLRequestMetadata, DCLStageInput, GroupProfileArtifact, GroupProfileInput, GroupProfileResponse, PromptMessage, StoredInterpretation
+from src.ai.comprehension.prompts import GROUP_PROFILE_PROMPT_VERSION, build_group_profile_messages
+from src.ai.comprehension.serialization import hash_input_snapshot
 from src.ai.comprehension.validation import materialize_validated_findings, validate_available_evidence, validate_response_evidence
 from src.ai.models.analysis import Record
 
@@ -35,21 +37,56 @@ class DCLStageOutcome(Generic[ResponseT]):
         if not self.calls:
             raise ValueError("A stage outcome requires at least one call record.")
 
-        final_status = self.calls[-1].status
+        final_call = self.calls[-1]
 
-        if self.generation is not None:
-            if final_status != "completed":
-                raise ValueError("A successful outcome must end with a completed call.")
-
-            if not self.findings:
-                raise ValueError("A successful DCL outcome requires validated findings.")
-            
-        else:
-            if final_status != "failed":
+        # Failed outcome
+        if self.generation is None:
+            if final_call.status != "failed":
                 raise ValueError("An unsuccessful outcome must end with a failed call.")
 
             if self.findings:
                 raise ValueError("An unsuccessful outcome cannot expose findings.")
+
+            return
+
+        # Successful outcome
+        if final_call.status != "completed":
+            raise ValueError("A successful outcome must end with a completed call.")
+
+        if final_call.parsed_response != self.generation.value:
+            raise ValueError("The completed call and stage generation must contain the same response.")
+
+        if final_call.receipt != self.generation.receipt:
+            raise ValueError("The completed call and stage generation must contain the same receipt.")
+
+        if final_call.raw_response != self.generation.raw_text:
+            raise ValueError("The completed call and stage generation must contain the same raw response.")
+
+        parsed_response = final_call.parsed_response
+
+        if parsed_response is None:
+            raise ValueError("A successful outcome requires a parsed response.")
+
+        # Revalidate the citations against the exact input snapshot used by the successful provider call.
+        reference_validation = validate_response_evidence(
+            final_call.input_snapshot,
+            parsed_response,
+        )
+
+        if not reference_validation.valid:
+            raise ValueError("A successful outcome cannot contain findings with invalid evidence references.")
+
+        # Reconstruct the canonical findings from the response. This verifies IDs, paths, drafts, validation status, completeness, and deterministic ordering.
+        expected_findings = materialize_validated_findings(
+            request_id=final_call.request.request_id,
+            validation=reference_validation,
+        )
+
+        if not expected_findings:
+            raise ValueError("A successful DCL outcome requires findings.")
+
+        if self.findings != expected_findings:
+            raise ValueError("The outcome findings must exactly match the reference-validated response findings.")
 
 
 def run_dcl_stage(
@@ -235,6 +272,20 @@ def run_group_profile_stage(
     input_snapshot: GroupProfileInput,
     max_retries: int,
 ) -> DCLStageOutcome[GroupProfileResponse]:
+    if request.stage != "stakeholder_group_profile":
+        raise ValueError("Group-profile execution requires group-profile request metadata.")
+
+    if request.group_id != input_snapshot.group.id:
+        raise ValueError("Request and snapshot must identify the same group.")
+
+    if request.prompt_version != GROUP_PROFILE_PROMPT_VERSION:
+        raise ValueError("Request prompt version does not match the active group-profile prompt.")
+
+    actual_hash = hash_input_snapshot(input_snapshot)
+
+    if request.input_hash != actual_hash:
+        raise ValueError("Request input hash does not match the supplied input snapshot.")
+
     messages = build_group_profile_messages(input_snapshot)
 
     return run_dcl_stage(

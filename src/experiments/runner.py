@@ -20,11 +20,13 @@ from pathlib import Path
 from importlib.metadata import PackageNotFoundError, version
 from datetime import datetime, timezone
 
+from src.ai.comprehension.orchestration import run_group_profiles_for_result
+from src.ai.comprehension.storage import save_group_profiles_outcome
 from src.common.time import timestamp
 from src.experiments.assertions import validate_assertions, evaluate_declared_assertions
 from src.experiments.models import Experiment, ReusedWeighting, ResolvedExecutionInputs
 from src.experiments.results import RunResult
-from src.experiments.storage import save_run, write_json_atomic, ArtifactWriteError
+from src.experiments.storage import output_flags, save_run, write_json_atomic, ArtifactWriteError
 from src.experiments.comparison import evaluate_comparisons
 from src.mcdm.enums import (
     WeightingMethod, RankingMethod, MeanMethod, GroupPowerMethod,
@@ -620,16 +622,7 @@ def _validate_execution_order(runs):
                     f"{run.key}: dependency {dependency_key!r} "
                     "must appear before its consumer."
                 )
-
-def _validate_execution_request(
-    runs,
-    *,
-    ai_requested: bool,
-) -> None:
-    if ai_requested:
-        raise ValueError(
-            "AI execution is not implemented yet."
-        )
+            
     
 def _create_run_result(run: PreparedRun) -> RunResult:
     experiment = run.experiment
@@ -2229,18 +2222,20 @@ def execute_experiments(
     *,
     ai_component: AIComponent | None = None
 ) -> tuple[Path, list[RunResult]]:
-    if ai_component is not None:
-        raise ValueError(
-            "AI execution is not implemented yet."
-        )
-
     if output is None:
         raise ValueError("An output directory is required.")
 
     runs = list(runs)
-
     if not runs:
         raise ValueError("No prepared runs were supplied.")
+
+    ai_runs = [
+        run
+        for run in runs
+        if run.experiment.ai.enabled
+    ]
+    if ai_runs and ai_component is None:
+        raise ValueError("AI-enabled experiments require an initialized AI component.")
 
     _validate_execution_order(runs)
 
@@ -2264,6 +2259,16 @@ def execute_experiments(
             f"Could not create batch directory "
             f"{batch_directory}: {error}"
         ) from error
+
+    if ai_component is not None:
+        preflight = ai_component.preflight.model_copy(
+            update={"batch_id": batch_id}
+        )
+
+        write_json_atomic(
+            batch_directory / "ai/preflight.json",
+            preflight,
+        )
 
     manifest = {
         "schema_version": "1.0",
@@ -2300,6 +2305,22 @@ def execute_experiments(
         manifest["updated_at"] = timestamp()
 
         write_json_atomic(manifest_path, manifest)
+
+    def run_artifact_directory(run) -> Path:
+        entry = manifest["runs"][run.key]
+        relative = entry.get("directory")
+
+        if not isinstance(relative, str) or not relative:
+            raise ArtifactWriteError("Run artifacts must be checkpointed before AI execution.")
+
+        directory = (
+            batch_directory / relative
+        ).resolve()
+
+        if not directory.is_relative_to(batch_directory):
+            raise ArtifactWriteError("Run artifact directory escaped the batch.")
+
+        return directory
 
     try:
         write_json_atomic(manifest_path, manifest)
@@ -2394,6 +2415,153 @@ def execute_experiments(
             # Keep storage errors outside the validation handler.
             checkpoint(run, result)
 
+        manifest["phase"] = "ai"
+        write_json_atomic(manifest_path, manifest)
+
+        for run in runs:
+            result = completed[run.key]
+
+            if not run.experiment.ai.enabled:
+                result.execution["ai_status"] = "not_requested"
+                continue
+
+            if (
+                result.execution.get("numerical_status")
+                != "completed"
+            ):
+                result.execution["ai_status"] = "blocked"
+                result.execution["messages"].append(
+                    "AI execution was blocked because numerical "
+                    "calculation did not complete."
+                )
+                checkpoint(run, result)
+                continue
+
+            if (
+                result.execution.get("validation_status")
+                != "passed"
+            ):
+                result.execution["ai_status"] = "blocked"
+                result.execution["messages"].append(
+                    "AI execution was blocked because deterministic "
+                    "validation did not pass."
+                )
+                checkpoint(run, result)
+                continue
+
+            if "data_comprehension" not in run.experiment.ai.layers:
+                result.execution["ai_status"] = "not_requested"
+                checkpoint(run, result)
+                continue
+
+            result.execution["ai_scope"] = [
+                "data_comprehension.stakeholder_group_profiles"
+            ]
+
+            result.execution["ai_status"] = "running"
+            result.execution["ai_started_at"] = timestamp()
+            ai_started = time.perf_counter()
+            result.execution["ai_repetitions"] = {}
+
+            flags = output_flags(
+                run.experiment.output
+            )
+
+            run_directory = run_artifact_directory(run)
+
+            repetition_statuses = []
+
+            for ai_repetition in range(
+                1,
+                run.experiment.ai.repetitions + 1,
+            ):
+                outcome = run_group_profiles_for_result(
+                    backend=ai_component.backend,
+                    result=result,
+                    ai_repetition=ai_repetition,
+                    max_retries=ai_component.config.max_retries,
+                    required_limitations=(
+                        "Modeled group results do not establish "
+                        "unanimity, motivation, or broader population "
+                        "preferences.",
+                    ),
+                )
+
+                artifact_root = save_group_profiles_outcome(
+                    run_directory=run_directory,
+                    outcome=outcome,
+                    save_ai_calls=flags["save_ai_calls"],
+                    save_ai_responses=flags[
+                        "save_ai_responses"
+                    ],
+                )
+
+                if outcome.succeeded:
+                    repetition_status = "completed"
+                elif outcome.state.group_profiles:
+                    repetition_status = "partial"
+                else:
+                    repetition_status = "failed"
+
+                repetition_statuses.append(
+                    repetition_status
+                )
+
+                result.execution["ai_repetitions"][
+                    str(ai_repetition)
+                ] = {
+                    "status": repetition_status,
+                    "successful_group_ids": [
+                        artifact.request.group_id
+                        for artifact
+                        in outcome.state.group_profiles
+                    ],
+                    "failed_group_ids": list(
+                        outcome.failed_group_ids
+                    ),
+                    "call_count": len(outcome.calls),
+                    "artifact_directory": (
+                        artifact_root
+                        .relative_to(run_directory)
+                        .as_posix()
+                    ),
+                }
+
+                # Preserve completed repetition progress.
+                checkpoint(run, result)
+
+            if all(
+                status == "completed"
+                for status in repetition_statuses
+            ):
+                result.execution["ai_status"] = "completed"
+
+            elif any(
+                status in {"completed", "partial"}
+                for status in repetition_statuses
+            ):
+                result.execution["ai_status"] = "partial"
+
+            else:
+                result.execution["ai_status"] = "failed"
+
+            result.execution["ai_completed_at"] = timestamp()
+            result.execution["ai_duration_seconds"] = (
+                time.perf_counter() - ai_started
+            )
+
+            checkpoint(run, result)
+
+        manifest["ai_status_counts"] = dict(
+            Counter(
+                result.execution.get(
+                    "ai_status",
+                    "not_requested",
+                )
+                for result in results
+            )
+        )
+        
         manifest["phase"] = "finished"
         manifest["status"] = (
             "completed"
