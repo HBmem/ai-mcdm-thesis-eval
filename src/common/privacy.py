@@ -6,7 +6,16 @@ SENSITIVE = re.compile(r"(?:api[_-]?key|authorization|password|secret|access[_-]
 
 
 def sanitize(value, secrets=()):
-    known = tuple(s for s in (*secrets, os.environ.get("OLLAMA_API_KEY", ""), os.environ.get("OPENAI_API_KEY", "")) if s)
+    known = tuple(
+        secret
+        for secret in (
+            *secrets,
+            os.environ.get("OPENROUTER_API_KEY", ""),
+            os.environ.get("OLLAMA_API_KEY", ""),
+            os.environ.get("OPENAI_API_KEY", ""),
+        )
+        if secret
+    )
     def clean(item):
         if isinstance(item, dict):
             return {k: "[REDACTED]" if SENSITIVE.search(str(k)) else clean(v) for k, v in item.items()}

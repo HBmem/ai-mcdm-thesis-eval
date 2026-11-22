@@ -9,7 +9,7 @@ from typing import Generic, Literal, TypedDict, TypeVar, Protocol
 from openai import OpenAI, APITimeoutError, APIConnectionError, APIError, APIStatusError
 from pydantic import BaseModel, Field, AwareDatetime, ValidationError
 
-from src.ai.config import AIConfig
+from src.ai.config import AIConfig, AIProvider
 from src.ai.models.analysis import Record
 
 
@@ -91,6 +91,11 @@ class OpenAICompatibleBackend:
             "stream": False,
             "timeout": self.config.timeout,
         }
+
+        if self.config.provider is AIProvider.OPENROUTER:
+            request["extra_body"] = {
+                "provider": {"require_parameters": True},
+            }
 
         # Provider invocation
         try:

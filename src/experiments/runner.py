@@ -19,12 +19,20 @@ from uuid import uuid4
 from pathlib import Path
 from importlib.metadata import PackageNotFoundError, version
 from datetime import datetime, timezone
+from typing import Literal
 
 from src.ai.comprehension.orchestration import run_group_profiles_for_result
 from src.ai.comprehension.storage import save_group_profiles_outcome
 from src.common.time import timestamp
 from src.experiments.assertions import validate_assertions, evaluate_declared_assertions
 from src.experiments.models import Experiment, ReusedWeighting, ResolvedExecutionInputs
+from src.experiments.progress import (
+    AIRepetitionProgress,
+    ProgressEvent,
+    RunProgress,
+    StageName,
+    StageProgress,
+)
 from src.experiments.results import RunResult
 from src.experiments.storage import output_flags, save_run, write_json_atomic, ArtifactWriteError
 from src.experiments.comparison import evaluate_comparisons
@@ -49,6 +57,8 @@ ALLOWED_POLICIES = {
     "criterion_alignment": {"require_identical_ids", "common_ids"},
 }
 ALLOWED_SCOPES = {"participant", "group", "session"}
+
+ProgressCallback = Callable[[ProgressEvent], None]
 
 def _hash(payload):
     return hashlib.sha256(payload).hexdigest()
@@ -1894,7 +1904,7 @@ def execute_run(
                 criterion_weight_override=resolved.criterion_weight_overrides.get("participant"),
                 on_created=result.mcdm.participants.append,
             )
-            
+
         # Stakeholder groups
         for group in session.stakeholder_groups:
             members = [
@@ -1906,6 +1916,13 @@ def execute_run(
             if not members:
                 # This branch assumes your configured policy is "exclude".
                 continue
+
+            session_aggregation = (
+                MCDMService.create_session_aggregation(
+                    session=session,
+                    config=processing.aggregation_method,
+                )
+            )
 
             matrix = MCDMService.create_stakeholder_group_matrix(
                 session,
@@ -1923,6 +1940,9 @@ def execute_run(
                 metadata=EntityMetadata(
                     participant_count=len(members),
                     voting_power=group.voting_power,
+                    effective_voting_power=(
+                        session_aggregation.effective_voting_powers[group.id]
+                    )
                 ),
                 reused_weighting=resolved.reused_weightings.get(
                     ("group", group.id)
@@ -1989,6 +2009,7 @@ def _execute_numerical_runs(
     runs: Iterable[PreparedRun],
     *,
     on_result: Callable[[PreparedRun, RunResult], None] | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> list[RunResult]:
     runs = list(runs)
     _validate_execution_order(runs)
@@ -1996,7 +2017,18 @@ def _execute_numerical_runs(
     completed: dict[str, RunResult] = {}
     results: list[RunResult] = []
 
-    for run in runs:
+    for index, run in enumerate(runs, start=1):
+        run_started = time.perf_counter()
+
+        if on_progress is not None:
+            on_progress(RunProgress(
+                stage="numerical",
+                execution_key=run.key,
+                state="started",
+                current=index,
+                total=len(runs),
+            ))
+
         blocked_by = {
             key: completed[key]
             for key in run.dependencies
@@ -2065,6 +2097,29 @@ def _execute_numerical_runs(
         # Artifact failures must propagate to the caller.
         if on_result is not None:
             on_result(run, result)
+
+        if on_progress is not None:
+            numerical_status = result.execution.get(
+                "numerical_status"
+            )
+            state = (
+                "blocked"
+                if result.status == "blocked"
+                else "completed"
+                if numerical_status == "completed"
+                else "failed"
+            )
+            on_progress(RunProgress(
+                stage="numerical",
+                execution_key=run.key,
+                state=state,
+                current=index,
+                total=len(runs),
+                duration_seconds=(
+                    time.perf_counter() - run_started
+                ),
+                detail=f"numerical status: {numerical_status}",
+            ))
 
     return results
 
@@ -2220,8 +2275,53 @@ def execute_experiments(
     runs,
     output,
     *,
-    ai_component: AIComponent | None = None
+    ai_component: AIComponent | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> tuple[Path, list[RunResult]]:
+    active_stage: StageName | None = None
+    active_stage_started: float | None = None
+
+    def emit(event: ProgressEvent) -> None:
+        if on_progress is not None:
+            on_progress(event)
+
+    def start_stage(stage: StageName) -> None:
+        nonlocal active_stage, active_stage_started
+        active_stage = stage
+        active_stage_started = time.perf_counter()
+        emit(StageProgress(stage=stage, state="started"))
+
+    def finish_stage(
+        state: Literal[
+            "completed",
+            "partial",
+            "failed",
+            "skipped",
+        ],
+        *,
+        detail: str | None = None,
+    ) -> None:
+        nonlocal active_stage, active_stage_started
+
+        if active_stage is None:
+            return
+
+        stage = active_stage
+        started = active_stage_started
+        active_stage = None
+        active_stage_started = None
+
+        emit(StageProgress(
+            stage=stage,
+            state=state,
+            duration_seconds=(
+                time.perf_counter() - started
+                if started is not None
+                else None
+            ),
+            detail=detail,
+        ))
+
     if output is None:
         raise ValueError("An output directory is required.")
 
@@ -2325,10 +2425,13 @@ def execute_experiments(
     try:
         write_json_atomic(manifest_path, manifest)
 
+        start_stage("numerical")
+
         # Pass 1: calculate and checkpoint every planned execution.
         results = _execute_numerical_runs(
             runs,
             on_result=checkpoint,
+            on_progress=on_progress,
         )
 
         completed = {
@@ -2336,18 +2439,64 @@ def execute_experiments(
             for result in results
         }
 
+        numerical_counts = Counter(
+            result.execution.get("numerical_status", "unknown")
+            for result in results
+        )
+        numerical_completed = numerical_counts.get("completed", 0)
+        numerical_stage_state = (
+            "completed"
+            if numerical_completed == len(results)
+            else "partial"
+            if numerical_completed
+            else "failed"
+        )
+        run_label = "run" if len(results) == 1 else "runs"
+        finish_stage(
+            numerical_stage_state,
+            detail=(
+                f"{len(results)} {run_label} processed; "
+                + ", ".join(
+                    f"{status}={count}"
+                    for status, count in sorted(
+                        numerical_counts.items()
+                    )
+                )
+            ),
+        )
+
+        start_stage("validation")
+
         manifest["phase"] = "validation"
         write_json_atomic(manifest_path, manifest)
 
         # Pass 2: all numerical references are now available.
-        for run in runs:
+        for index, run in enumerate(runs, start=1):
             result = completed[run.key]
+            validation_run_started = time.perf_counter()
 
             if (
                 result.execution.get("numerical_status")
                 != "completed"
             ):
+                emit(RunProgress(
+                    stage="validation",
+                    execution_key=run.key,
+                    state="skipped",
+                    current=index,
+                    total=len(runs),
+                    duration_seconds=0.0,
+                    detail="numerical calculation did not complete",
+                ))
                 continue
+
+            emit(RunProgress(
+                stage="validation",
+                execution_key=run.key,
+                state="started",
+                current=index,
+                total=len(runs),
+            ))
 
             result.execution["validation_status"] = "running"
             result.execution["validation_started_at"] = timestamp()
@@ -2415,14 +2564,68 @@ def execute_experiments(
             # Keep storage errors outside the validation handler.
             checkpoint(run, result)
 
+            validation_status = result.execution.get(
+                "validation_status"
+            )
+            emit(RunProgress(
+                stage="validation",
+                execution_key=run.key,
+                state=(
+                    "completed"
+                    if validation_status == "passed"
+                    else "failed"
+                ),
+                current=index,
+                total=len(runs),
+                duration_seconds=(
+                    time.perf_counter()
+                    - validation_run_started
+                ),
+                detail=f"validation status: {validation_status}",
+            ))
+
+        validation_counts = Counter(
+            result.execution.get("validation_status", "not_run")
+            for result in results
+        )
+        validation_passed = validation_counts.get("passed", 0)
+        validation_stage_state = (
+            "completed"
+            if validation_passed == len(results)
+            else "partial"
+            if validation_passed
+            else "failed"
+        )
+        finish_stage(
+            validation_stage_state,
+            detail="; ".join(
+                f"{status}={count}"
+                for status, count in sorted(
+                    validation_counts.items()
+                )
+            ),
+        )
+
         manifest["phase"] = "ai"
         write_json_atomic(manifest_path, manifest)
 
-        for run in runs:
+        if ai_runs:
+            start_stage("ai")
+
+        for index, run in enumerate(runs, start=1):
             result = completed[run.key]
 
             if not run.experiment.ai.enabled:
                 result.execution["ai_status"] = "not_requested"
+                if ai_runs:
+                    emit(RunProgress(
+                        stage="ai",
+                        execution_key=run.key,
+                        state="skipped",
+                        current=index,
+                        total=len(runs),
+                        detail="AI not requested",
+                    ))
                 continue
 
             if (
@@ -2435,6 +2638,14 @@ def execute_experiments(
                     "calculation did not complete."
                 )
                 checkpoint(run, result)
+                emit(RunProgress(
+                    stage="ai",
+                    execution_key=run.key,
+                    state="blocked",
+                    current=index,
+                    total=len(runs),
+                    detail="numerical calculation did not complete",
+                ))
                 continue
 
             if (
@@ -2447,11 +2658,27 @@ def execute_experiments(
                     "validation did not pass."
                 )
                 checkpoint(run, result)
+                emit(RunProgress(
+                    stage="ai",
+                    execution_key=run.key,
+                    state="blocked",
+                    current=index,
+                    total=len(runs),
+                    detail="deterministic validation did not pass",
+                ))
                 continue
 
             if "data_comprehension" not in run.experiment.ai.layers:
                 result.execution["ai_status"] = "not_requested"
                 checkpoint(run, result)
+                emit(RunProgress(
+                    stage="ai",
+                    execution_key=run.key,
+                    state="skipped",
+                    current=index,
+                    total=len(runs),
+                    detail="data comprehension layer not requested",
+                ))
                 continue
 
             result.execution["ai_scope"] = [
@@ -2462,6 +2689,18 @@ def execute_experiments(
             result.execution["ai_started_at"] = timestamp()
             ai_started = time.perf_counter()
             result.execution["ai_repetitions"] = {}
+
+            emit(RunProgress(
+                stage="ai",
+                execution_key=run.key,
+                state="started",
+                current=index,
+                total=len(runs),
+                detail=(
+                    f"{run.experiment.ai.repetitions} "
+                    "repetition(s)"
+                ),
+            ))
 
             flags = output_flags(
                 run.experiment.output
@@ -2475,6 +2714,14 @@ def execute_experiments(
                 1,
                 run.experiment.ai.repetitions + 1,
             ):
+                repetition_started = time.perf_counter()
+                emit(AIRepetitionProgress(
+                    execution_key=run.key,
+                    repetition=ai_repetition,
+                    total=run.experiment.ai.repetitions,
+                    state="started",
+                ))
+
                 outcome = run_group_profiles_for_result(
                     backend=ai_component.backend,
                     result=result,
@@ -2530,6 +2777,21 @@ def execute_experiments(
                 # Preserve completed repetition progress.
                 checkpoint(run, result)
 
+                emit(AIRepetitionProgress(
+                    execution_key=run.key,
+                    repetition=ai_repetition,
+                    total=run.experiment.ai.repetitions,
+                    state=repetition_status,
+                    duration_seconds=(
+                        time.perf_counter() - repetition_started
+                    ),
+                    detail=(
+                        f"{len(outcome.state.group_profiles)} "
+                        "group profile(s) completed; "
+                        f"{len(outcome.failed_group_ids)} failed"
+                    ),
+                ))
+
             if all(
                 status == "completed"
                 for status in repetition_statuses
@@ -2551,6 +2813,49 @@ def execute_experiments(
             )
 
             checkpoint(run, result)
+
+            emit(RunProgress(
+                stage="ai",
+                execution_key=run.key,
+                state=result.execution["ai_status"],
+                current=index,
+                total=len(runs),
+                duration_seconds=result.execution[
+                    "ai_duration_seconds"
+                ],
+                detail=(
+                    f"AI status: {result.execution['ai_status']}"
+                ),
+            ))
+
+        if ai_runs:
+            ai_counts = Counter(
+                result.execution.get("ai_status", "not_requested")
+                for run, result in zip(runs, results, strict=True)
+                if run.experiment.ai.enabled
+            )
+            ai_completed = ai_counts.get("completed", 0)
+            ai_partial = ai_counts.get("partial", 0)
+            ai_stage_state = (
+                "completed"
+                if ai_completed == len(ai_runs)
+                else "partial"
+                if ai_completed or ai_partial
+                else "failed"
+            )
+            finish_stage(
+                ai_stage_state,
+                detail="; ".join(
+                    f"{status}={count}"
+                    for status, count in sorted(ai_counts.items())
+                ),
+            )
+        else:
+            emit(StageProgress(
+                stage="ai",
+                state="skipped",
+                detail="no AI-enabled runs selected",
+            ))
 
         manifest["ai_status_counts"] = dict(
             Counter(
@@ -2582,6 +2887,11 @@ def execute_experiments(
         return batch_directory, results
 
     except Exception as error:
+        finish_stage(
+            "failed",
+            detail=f"{type(error).__name__}: {error}",
+        )
+
         manifest["status"] = "aborted"
         manifest["completed_at"] = timestamp()
         manifest["error"] = {

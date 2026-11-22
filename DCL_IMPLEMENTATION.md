@@ -23,7 +23,7 @@ and advisory layers remain outside this implementation.
 | Files | Result |
 | --- | --- |
 | `src/models/analysis.py`, `src/models/explanation.py`, `src/models/prompt.py` | Versioned authoritative evidence, relationships, uncertainty, structured claims/checks, verification/review records, DCL output contracts, prompts and ordered stage inputs. |
-| `src/comprehension.py` | Allowlisted context assembly, source/configuration hashes, fact retrieval and task packaging, strict JSON/schema/evidence validation, OpenAI SDK integration for Ollama Cloud, bounded retries and per-attempt audit records. |
+| `src/ai/` | Provider-neutral configuration, OpenAI-compatible client integration, allowlisted context assembly, source/configuration hashes, fact retrieval and task packaging, strict JSON/schema/evidence validation, bounded retries and per-attempt audit records. |
 | `src/diagnostics.py` | Participant/group TOPSIS rankings, weight ranges/population deviations, rank correlations, omission counterfactuals and bounded weight/criterion sensitivity. |
 | `src/privacy.py` | Credential/recognizable sensitive-field redaction; metadata needing redaction is rejected before sending a prompt. |
 | `src/runner.py`, `src/results.py`, `run_experiment.py` | Required comprehension, typed results, schema 1.1 with 1.0 reading support, atomic call sidecars, failure/dependency handling and configuration preflight. |
@@ -68,7 +68,7 @@ Inspect these saved results with:
   eight-token probe (finish reason `length`). Injected/local-server DCL success
   verifies integration, persistence and validation; it does not establish a live
   model's interpretation quality, context capacity, latency or schema adherence.
-- Ollama Cloud currently does not enforce structured-output schemas. Invalid JSON,
+- Provider schema enforcement varies. Invalid JSON,
   unsupported evidence, omitted required coverage and invalid numerical checks
   fail explicitly; there is no fabricated-output fallback.
 - Mathematical verification applies to structured claim values. Prose receives

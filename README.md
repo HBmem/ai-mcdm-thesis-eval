@@ -19,7 +19,7 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 python run_experiment.py validate --experiments experiments
 cp .env.example .env
-# Edit .env to set OLLAMA_API_KEY and OLLAMA_MODEL.
+# Edit .env to set AI_PROVIDER, AI_MODEL, and the provider's API key.
 python run_experiment.py run --experiments experiments --output results
 streamlit run app.py -- --results results
 ```
@@ -38,8 +38,9 @@ relative to that experiment JSON file.
 
 Exit codes: `0` for successful validation/execution, `1` for a calculation,
 assertion, comprehension, or artifact-write failure, and `2` for invalid configuration/arguments.
-`validate` requires no AI configuration. `run` requires both Ollama environment variables
-and rejects missing configuration before creating a batch. Configuration loads from
+`validate` requires no AI configuration. `run` requires the selected provider, model,
+and provider-specific API key, and rejects missing configuration before creating a
+batch. Configuration loads from
 the repository-root `.env` using python-dotenv, even when invoked from another
 directory. Existing environment variables take precedence; a blank environment
 variable is not replaced by the file. `.env` is gitignored and must stay private.
@@ -206,15 +207,20 @@ context assembly precedes those calls. Validated results are available as
 `RunResult.comprehension.state`; `comprehension.context` supports fact retrieval.
 Later explanation and advisory stages are outside this implementation.
 
-The client is the OpenAI Python SDK configured for Ollama Cloud. The default
-endpoint is `https://ollama.com/v1`; override it with `OLLAMA_BASE_URL` for a
-compatible endpoint. Set `OLLAMA_MODEL` to the exact API model identifier and
-`OLLAMA_API_KEY` outside source control. Neither credential values nor SDK request
-headers are saved. Tests inject clients; production has no synthetic fallback.
+The client is the OpenAI Python SDK configured for an OpenAI-compatible provider.
+Set `AI_PROVIDER` to `openrouter`, `ollama`, or `openai`, set `AI_MODEL` to the
+provider's exact model identifier, and store the corresponding
+`OPENROUTER_API_KEY`, `OLLAMA_API_KEY`, or `OPENAI_API_KEY` outside source control.
+Each provider has a default endpoint; `AI_BASE_URL` can override it. Optional
+`AI_APP_URL` and `AI_APP_NAME` values are sent as OpenRouter attribution headers.
+Neither credential values nor SDK request headers are saved. Tests inject clients;
+production has no synthetic fallback.
 `execute_batch(..., ai_config=..., ai_client=...)` is the injection boundary.
 
-Ollama Cloud does not currently enforce structured-output schemas. Prompts include
-the schema; responses must be strict JSON and pass Pydantic and evidence validation.
+Prompts include the schema; responses must be strict JSON and pass Pydantic and
+evidence validation. OpenRouter requests require a routed endpoint that supports
+the structured-output parameters instead of silently accepting an incompatible
+endpoint.
 Each request has a 120-second timeout and up to two retries for transient transport
 or rate/server errors. Every attempt has its own audit record. Malformed or
 unsupported output fails immediately. Successful prior stages remain available for

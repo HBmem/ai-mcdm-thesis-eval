@@ -25,6 +25,13 @@ from src.mcdm.models.computation import WeightResult, CriterionWeight, RankingRe
 ROUNDOFF_TOLERANCE = 1e-12
 WEIGHT_SUM_TOLERANCE = 1e-10
 
+
+@dataclass(frozen=True, slots=True)
+class SessionAggregationResult:
+    matrix: np.ndarray
+    effective_voting_powers: dict[str, float]
+
+
 def validate_weight_vector(
     values,
     *,
@@ -241,12 +248,12 @@ class MCDMService:
         )
 
     @classmethod
-    def create_session_matrix(
+    def create_session_aggregation(
         cls,
         session: DecisionSession,
         *,
         config: AggregationMethodConfig,
-    ) -> np.ndarray:
+    ) -> SessionAggregationResult:
         if config.empty_group_policy != EmptyGroupPolicy.EXCLUDED:
             raise NotImplementedError(
                 "Only exclusion of empty groups is implemented."
@@ -283,8 +290,9 @@ class MCDMService:
         ):
             raise ValueError("A participant references an unknown group.")
 
+        represented_groups = []
         group_matrices = []
-        voting_powers = []
+        configured_powers = []
 
         for group in session.stakeholder_groups:
             members = [
@@ -296,6 +304,7 @@ class MCDMService:
             if not members:
                 continue
 
+            represented_groups.append(group)
             group_matrices.append(
                 cls.create_stakeholder_group_matrix(
                     session,
@@ -303,36 +312,47 @@ class MCDMService:
                     config=config,
                 )
             )
-
-            voting_powers.append(group.voting_power)
+            configured_powers.append(group.voting_power)
 
         if not group_matrices:
             raise ValueError("No represented stakeholder groups.")
 
-        powers = np.asarray(voting_powers, dtype=float)
-        total_power = powers.sum()
+        powers = np.asarray(configured_powers, dtype=float)
+        effective_powers = powers / powers.sum()
 
-        if (
-            not np.all(np.isfinite(powers))
-            or np.any(powers < 0)
-            or not np.isfinite(total_power)
-            or total_power <= 0
-        ):
-            raise ValueError(
-                "Represented groups require finite, nonnegative "
-                "voting powers with a positive total."
-            )
-
-        effective_powers = powers / total_power
-        matrices = np.stack(group_matrices)
-
-        return np.exp(
+        matrix = np.exp(
             np.tensordot(
                 effective_powers,
-                np.log(matrices),
+                np.log(np.stack(group_matrices)),
                 axes=1,
             )
         )
+
+        return SessionAggregationResult(
+            matrix=matrix,
+            effective_voting_powers={
+                group.id: float(power)
+                for group, power in zip(
+                    represented_groups,
+                    effective_powers,
+                    strict=True,
+                )
+            },
+        )
+
+
+    @classmethod
+    def create_session_matrix(
+        cls,
+        session: DecisionSession,
+        *,
+        config: AggregationMethodConfig,
+    ) -> np.ndarray:
+        return cls.create_session_aggregation(
+            session,
+            config=config,
+        ).matrix
+
 
     @staticmethod
     def create_decision_matrix(

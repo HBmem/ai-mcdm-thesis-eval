@@ -57,9 +57,9 @@ def check_model_access(config: AIConfig, client):
         raise PreflightError("Cannot connect to the configured AI endpoint; key/model validity was not established.", 1) from None
     except APIStatusError as error:
         if error.status_code in {401, 403}:
-            message, code = "AI authentication or permission check failed. Check OLLAMA_API_KEY and model access.", 2
+            message, code = "AI authentication or permission check failed. Check the configured provider API key and model access.", 2
         elif error.status_code in {400, 404, 405, 422}:
-            message, code = "The endpoint rejected the configured model or request. Check OLLAMA_MODEL and OLLAMA_BASE_URL.", 2
+            message, code = "The endpoint rejected the configured model or request. Check AI_MODEL, AI_BASE_URL, and model parameter support.", 2
         elif error.status_code == 402:
             message, code = "The AI provider requires payment or available credits to process this request. Check account billing, credits, or plan.", EXIT_PAYMENT_REQUIRED
         else:

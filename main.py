@@ -1,11 +1,18 @@
 """CLI entry point"""
 import argparse
+import os
 import sys
 
 from pathlib import Path
 from contextlib import ExitStack
 
 from src.experiments.loader import load_experiments
+from src.experiments.progress import (
+    AIRepetitionProgress,
+    ProgressEvent,
+    RunProgress,
+    StageProgress,
+)
 from src.experiments.runner import prepare_runs, execute_experiments
 from src.experiments.storage import ArtifactWriteError
 from src.ai.config import AIConfig
@@ -14,6 +21,140 @@ from src.ai.preflight import PreflightError
 
 
 ROOT = Path(__file__).resolve().parent
+
+
+class CLIProgressReporter:
+    def __init__(self, stream=sys.stdout):
+        self.stream = stream
+        self.use_color = (
+            hasattr(stream, "isatty")
+            and stream.isatty()
+            and "NO_COLOR" not in os.environ
+        )
+
+    def color(self, code: str, text: str) -> str:
+        if not self.use_color:
+            return text
+
+        return f"\033[{code}m{text}\033[0m"
+
+    def _duration(self, seconds: float | None) -> str:
+        return (
+            f" in {seconds:.2f}s"
+            if seconds is not None
+            else ""
+        )
+
+    def _outcome(self, state: str) -> tuple[str, str]:
+        outcomes = {
+            "completed": ("✓", "1;32"),
+            "partial": ("◐", "1;33"),
+            "blocked": ("■", "1;33"),
+            "skipped": ("○", "1;33"),
+            "failed": ("✗", "1;31"),
+        }
+        return outcomes.get(state, ("•", "0"))
+
+    def __call__(self, event: ProgressEvent) -> None:
+        if isinstance(event, RunProgress):
+            position = f"[{event.current}/{event.total}]"
+
+            if event.state == "started":
+                message = self.color(
+                    "0;36",
+                    f"  ├─ {position} {event.execution_key}",
+                )
+            else:
+                symbol, color = self._outcome(event.state)
+                message = self.color(
+                    color,
+                    (
+                        f"  │  {symbol} {event.execution_key}: "
+                        f"{event.state}"
+                        f"{self._duration(event.duration_seconds)}"
+                    ),
+                )
+
+            if event.detail:
+                message += f" — {event.detail}"
+
+            print(message, file=self.stream, flush=True)
+            return
+
+        if isinstance(event, AIRepetitionProgress):
+            position = f"[{event.repetition}/{event.total}]"
+
+            if event.state == "started":
+                message = self.color(
+                    "0;36",
+                    (
+                        f"  │  ├─ AI repetition {position} "
+                        f"for {event.execution_key}"
+                    ),
+                )
+            else:
+                symbol, color = self._outcome(event.state)
+                message = self.color(
+                    color,
+                    (
+                        f"  │  │  {symbol} repetition "
+                        f"{position}: {event.state}"
+                        f"{self._duration(event.duration_seconds)}"
+                    ),
+                )
+
+            if event.detail:
+                message += f" — {event.detail}"
+
+            print(message, file=self.stream, flush=True)
+            return
+
+        label = (
+            "AI"
+            if event.stage == "ai"
+            else event.stage.replace("_", " ").title()
+        )
+
+        if event.state == "started":
+            message = self.color(
+                "1;36",
+                f"\n╭─ {label}",
+            )
+
+        elif event.state == "completed":
+            message = self.color(
+                "1;32",
+                (
+                    f"╰─ ✓ {label} completed"
+                    f"{self._duration(event.duration_seconds)}"
+                ),
+            )
+
+        elif event.state == "skipped":
+            message = self.color(
+                "1;33",
+                f"\n○ {label} skipped",
+            )
+
+        elif event.state == "partial":
+            message = self.color(
+                "1;33",
+                (
+                    f"╰─ ◐ {label} partially completed"
+                    f"{self._duration(event.duration_seconds)}"
+                ),
+            )
+
+        else:
+            message = self.color(
+                "1;31",
+                f"╰─ ✗ {label} failed",
+            )
+
+        if event.detail:
+            message += f" — {event.detail}"
+
+        print(message, file=self.stream, flush=True)
 
 
 # Exit code policy:
@@ -54,6 +195,7 @@ def main(argv=None):
     try:
         with ExitStack() as stack:
             ai_component = None
+            reporter = CLIProgressReporter()
 
             if args.ai:
                 config = AIConfig.from_env(ROOT / ".env")
@@ -65,6 +207,7 @@ def main(argv=None):
                 runs,
                 args.output,
                 ai_component=ai_component,
+                on_progress=reporter,
             )
 
             for result in results:

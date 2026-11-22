@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Self
 from urllib.parse import urlsplit
-from enum import StrEnum
 
 from dotenv import load_dotenv
 
@@ -64,7 +64,7 @@ class AIConfig:
         if self.app_name:
             headers["X-Title"] = self.app_name
         return headers
-    
+
     @classmethod
     def from_env(
         cls,
@@ -73,20 +73,39 @@ class AIConfig:
         if env_file is not None:
             load_dotenv(dotenv_path=env_file, override=False)
 
+        provider_name = os.environ.get("AI_PROVIDER", "").strip().lower()
+
+        try:
+            provider = AIProvider(provider_name)
+        except ValueError:
+            supported = ", ".join(item.value for item in AIProvider)
+            if not provider_name:
+                raise ValueError(
+                    "Missing required AI configuration: AI_PROVIDER"
+                ) from None
+            raise ValueError(
+                f"Unsupported AI_PROVIDER {provider_name!r}; "
+                f"expected one of: {supported}."
+            ) from None
+
+        profile = PROVIDERS[provider]
         values = {
-            "model": os.environ.get("OLLAMA_MODEL", "").strip(),
-            "api_key": os.environ.get("OLLAMA_API_KEY", "").strip(),
+            "provider": provider,
+            "model": os.environ.get("AI_MODEL", "").strip(),
+            "api_key": os.environ.get(profile.api_key_env, "").strip(),
             "base_url": os.environ.get(
-                "OLLAMA_BASE_URL",
-                "https://ollama.com/v1",
+                "AI_BASE_URL",
+                profile.base_url,
             ).strip(),
+            "app_url": os.environ.get("AI_APP_URL", "").strip() or None,
+            "app_name": os.environ.get("AI_APP_NAME", "").strip() or None,
         }
 
         missing = [
             name
             for name, value in (
-                ("OLLAMA_MODEL", values["model"]),
-                ("OLLAMA_API_KEY", values["api_key"]),
+                ("AI_MODEL", values["model"]),
+                (profile.api_key_env, values["api_key"]),
             )
             if not value
         ]
@@ -101,7 +120,8 @@ class AIConfig:
 
     def audit_metadata(self) -> dict[str, object]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
+            "provider": self.provider.value,
             "model": self.model,
             "base_url": self.base_url,
             "timeout": self.timeout,
@@ -111,8 +131,14 @@ class AIConfig:
     def __post_init__(self) -> None:
         parsed = urlsplit(self.base_url)
 
+        if not isinstance(self.provider, AIProvider):
+            raise ValueError("AI provider must be an AIProvider value.")
+
         if not self.model.strip():
             raise ValueError("AI model must not be empty.")
+
+        if not self.api_key.strip():
+            raise ValueError("AI API key must not be empty.")
 
         if (
             parsed.scheme not in {"http", "https"}
@@ -131,4 +157,3 @@ class AIConfig:
             raise ValueError(
                 "AI retries must be between zero and two."
             )
-        
