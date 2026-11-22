@@ -5,6 +5,7 @@ from src.ai.comprehension.models import (
     DCLStageInput,
     EvidenceReference,
     GroupProfileInput,
+    SessionUnderstandingInput,
 )
 
 
@@ -108,6 +109,12 @@ def resolve_evidence(
     reference: EvidenceReference,
 ) -> object:
     """Return the referenced value or raise EvidenceResolutionError."""
+    if isinstance(snapshot, SessionUnderstandingInput):
+        return resolve_session_understanding_evidence(
+            snapshot,
+            reference,
+        )
+    
     if isinstance(snapshot, GroupProfileInput):
         return resolve_group_profile_evidence(
             snapshot,
@@ -115,7 +122,51 @@ def resolve_evidence(
         )
 
     raise EvidenceResolutionError(f"Evidence resolution is not implemented for stage {snapshot.stage!r}.")
-    
+
+
+def resolve_session_understanding_evidence(
+    snapshot: SessionUnderstandingInput,
+    reference: EvidenceReference,
+) -> object:
+    if reference.object_type == "scenario":
+        if (
+            reference.object_id
+            != snapshot.scenario.scenario_id
+        ):
+            raise EvidenceResolutionError("Unknown scenario evidence object.")
+
+        current: object = snapshot.scenario
+
+    elif reference.object_type == "criterion":
+        current = _find_by_id(
+            snapshot.criteria,
+            reference.object_id,
+            "criterion",
+        )
+
+    elif reference.object_type == "alternative":
+        current = _find_by_id(
+            snapshot.alternatives,
+            reference.object_id,
+            "alternative",
+        )
+
+    elif reference.object_type == "group":
+        current = _find_by_id(
+            snapshot.groups,
+            reference.object_id,
+            "group",
+        )
+
+    else:
+        raise EvidenceResolutionError("Unsupported session-understanding evidence object type.")
+
+    return _resolve_path(
+        current,
+        reference.field_path,
+    )
+
+
 def resolve_group_profile_evidence(
     snapshot: GroupProfileInput,
     reference: EvidenceReference,

@@ -10,6 +10,7 @@ from src.ai.comprehension.models import (
     PriorInterpretation,
     ProcessingContext,
     ScenarioContext,
+    SessionUnderstandingInput,
 )
 from src.experiments.results import RunResult
 from src.mcdm.models.domain import (
@@ -140,6 +141,91 @@ def _resolved_objects(
         processing_context,
     )
 
+
+def _session_understanding_evidence(
+    *,
+    scenario: ScenarioContext,
+    criteria: tuple[Criterion, ...],
+    alternatives: tuple[Alternative, ...],
+    groups: tuple[StakeholderGroup, ...],
+) -> tuple[EvidenceReference, ...]:
+    references: list[EvidenceReference] = [
+        EvidenceReference(
+            object_type="scenario",
+            object_id=scenario.scenario_id,
+            field_path=("title",),
+        ),
+        EvidenceReference(
+            object_type="scenario",
+            object_id=scenario.scenario_id,
+            field_path=("description",),
+        ),
+        EvidenceReference(
+            object_type="scenario",
+            object_id=scenario.scenario_id,
+            field_path=("decision_question",),
+        ),
+        EvidenceReference(
+            object_type="scenario",
+            object_id=scenario.scenario_id,
+            field_path=("objectives",),
+        ),
+        EvidenceReference(
+            object_type="scenario",
+            object_id=scenario.scenario_id,
+            field_path=("assumptions",),
+        ),
+        EvidenceReference(
+            object_type="scenario",
+            object_id=scenario.scenario_id,
+            field_path=("constraints",),
+        ),
+    ]
+
+    for criterion in criteria:
+        for field_name in (
+            "name",
+            "description",
+            "direction",
+            "unit",
+        ):
+            references.append(
+                EvidenceReference(
+                    object_type="criterion",
+                    object_id=criterion.id,
+                    field_path=(field_name,),
+                )
+            )
+
+    for alternative in alternatives:
+        for field_name in (
+            "name",
+            "description",
+            "criterion_values",
+        ):
+            references.append(
+                EvidenceReference(
+                    object_type="alternative",
+                    object_id=alternative.id,
+                    field_path=(field_name,),
+                )
+            )
+
+    for group in groups:
+        for field_name in (
+            "name",
+            "description",
+            "voting_power",
+        ):
+            references.append(
+                EvidenceReference(
+                    object_type="group",
+                    object_id=group.id,
+                    field_path=(field_name,),
+                )
+            )
+
+    return tuple(references)
 
 def _group_calculations(
     result: RunResult,
@@ -363,7 +449,52 @@ def _validate_group_diagnostics(
                 "the target group."
             )
 
-        
+
+def build_session_understanding_input(
+    *,
+    result: RunResult,
+    required_limitations: tuple[str, ...] = (),
+) -> SessionUnderstandingInput:
+    require_completed_numerical_result(result)
+
+    (
+        scenario,
+        criteria,
+        alternatives,
+        groups,
+        processing,
+    ) = _resolved_objects(result)
+
+    group_ids = [group.id for group in groups]
+
+    if len(group_ids) != len(set(group_ids)):
+        raise ValueError(
+            "Configured group identifiers must be unique."
+        )
+
+    available_evidence = (
+        _session_understanding_evidence(
+            scenario=scenario,
+            criteria=criteria,
+            alternatives=alternatives,
+            groups=groups,
+        )
+    )
+
+    return SessionUnderstandingInput(
+        scenario=scenario,
+        criteria=criteria,
+        alternatives=alternatives,
+        groups=groups,
+        processing=processing,
+        available_evidence=available_evidence,
+        required_limitations=required_limitations,
+
+        # Enforced by SessionUnderstandingInput as well.
+        prior_interpretations=(),
+    )
+
+
 def build_group_profile_input(
     *,
     result: RunResult,
