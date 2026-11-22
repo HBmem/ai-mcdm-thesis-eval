@@ -41,6 +41,9 @@ from src.mcdm.models.methods import (
     RankingMethodConfig, WeightingMethodConfig,
 )
 
+
+PROCESSING_EVIDENCE_ID = "mcdm_processing"
+
 StageName = Literal[
     "session_understanding", "stakeholder_group_profile", "session_profile",
 ]
@@ -53,6 +56,10 @@ EvidenceObjectType = Literal[
     "group",
     "calculation",
     "diagnostic",
+    "objective",
+    "assumption",
+    "constraint",
+    "processing",
 ]
 
 
@@ -109,9 +116,28 @@ class ScenarioContext(Record):
     title: str = Field(min_length=1, description="Authored scenario/session title.")
     description: str = Field(description="Authored scope and setting, treated as source data.")
     decision_question: str = Field(min_length=1, description="The decision this evaluation can inform.")
-    objectives: tuple[str, ...] | None = Field(default=None, description="Explicit objectives, if recorded.")
-    assumptions: tuple[str, ...] | None = Field(default=None, description="Recorded assumptions, without AI additions.")
-    constraints: tuple[str, ...] | None = Field(default=None, description="Documented constraints; None does not establish feasibility.")
+    context: dict[str, JsonValue] | None = Field(default=None, description="Additional authored scenario context, if recorded.")
+    objectives: tuple[ScenarioObjective, ...] | None = Field(default=None, description="Explicit objectives, if recorded.")
+    assumptions: tuple[ScenarioAssumption, ...] | None = Field(default=None, description="Recorded assumptions, without AI additions.")
+    constraints: tuple[ScenarioConstraint, ...] | None = Field(default=None, description="Documented constraints; None does not establish feasibility.")
+
+    @model_validator(mode="after")
+    def validate_collection_ids(self) -> Self:
+        for label, collection in (
+            ("objective", self.objectives),
+            ("assumption", self.assumptions),
+            ("constraint", self.constraints),
+        ):
+            if collection is None:
+                continue
+
+            ids = [item.id for item in collection]
+            if any(not item_id.strip() for item_id in ids):
+                raise ValueError(f"{label} identifiers must be nonempty.")
+            if len(ids) != len(set(ids)):
+                raise ValueError(f"{label} identifiers must be unique.")
+
+        return self
 
 
 class ProcessingContext(Record):
@@ -186,6 +212,38 @@ class GroupContext(Record):
         if self.calculation is not None and self.calculation.entity_id != self.group.id:
             raise ValueError("Group definition and calculation must identify the same group.")
         return self
+
+
+class ScenarioObjective(Record):
+    """One explicitly recorded objective in the authored decision scenario."""
+
+    id: str = Field(min_length=1, description="Original objective identifier.")
+    description: str = Field(min_length=1, description="Recorded objective; do not infer it from criterion names.")
+    priority: str | None = Field(default=None, description="Recorded priority, if specified.")
+    related_criteria: tuple[str, ...] = Field(default=(), description="Identifiers of criteria explicitly related to this objective.")
+
+
+class ScenarioAssumption(Record):
+    """An assumption captured in the source scenario, not added by interpretation."""
+
+    id: str = Field(min_length=1, description="Original assumption identifier.")
+    statement: str = Field(min_length=1, description="Recorded assumption statement.")
+    status: str | None = Field(default=None, description="Recorded status, if available.")
+    uncertainty: str | None = Field(default=None, description="Recorded uncertainty associated with the assumption, if available.")
+
+
+class ScenarioConstraint(Record):
+    """A documented scenario constraint and its recorded verification details."""
+
+    id: str = Field(min_length=1, description="Original constraint identifier.")
+    description: str = Field(min_length=1, description="Recorded constraint description.")
+    type: str | None = Field(default=None, description="Recorded constraint category, if specified.")
+    parameter: str | None = Field(default=None, description="Parameter governed by the constraint, if specified.")
+    operator: str | None = Field(default=None, description="Recorded comparison or relation operator, if specified.")
+    value: JsonValue = Field(default=None, description="Recorded constraint value; None means no value was supplied.")
+    unit: str | None = Field(default=None, description="Unit associated with the recorded value, if specified.")
+    verification_status: str | None = Field(default=None, description="Recorded verification status; not independently verified here.")
+    scope: str | None = Field(default=None, description="Recorded scope to which the constraint applies, if specified.")
 
 
 class DiagnosticContext(Record):
@@ -400,11 +458,22 @@ class SessionUnderstandingResponse(Record):
     """
 
     decision_frame: InterpretationDraft
-    objectives_and_scope: tuple[InterpretationDraft, ...]
-    criteria_and_alternatives: tuple[InterpretationDraft, ...]
-    stakeholder_structure: tuple[InterpretationDraft, ...]
-    relationships: tuple[InterpretationDraft, ...] = Field(description="Recorded or explicitly conditional relationships; empty if none can be established.")
-    assumptions_and_gaps: tuple[InterpretationDraft, ...]
+    objectives: tuple[InterpretationDraft, ...] = Field(min_length=1)
+    alternatives: tuple[InterpretationDraft, ...] = Field(min_length=1)
+    criteria: tuple[InterpretationDraft, ...] = Field(min_length=1)
+    stakeholder_structure: tuple[InterpretationDraft, ...] = Field(min_length=1)
+    relationships: tuple[InterpretationDraft, ...] = Field(
+        min_length=1,
+        description=(
+            "Recorded or explicitly conditional relationships. "
+            "When none can be established, include an insufficient-evidence finding."
+        )
+    )
+    constraints: tuple[InterpretationDraft, ...] = Field(min_length=1)
+    authored_assumptions: tuple[InterpretationDraft, ...] = Field(min_length=1)
+    methodological_assumptions: tuple[InterpretationDraft, ...] = Field(min_length=1)
+    missing_or_ambiguous_information: tuple[InterpretationDraft, ...] = Field(min_length=1)
+    evidence_limitations: tuple[InterpretationDraft, ...] = Field(min_length=1)
 
 
 class GroupProfileResponse(Record):
@@ -433,11 +502,11 @@ class SessionProfileResponse(Record):
 
     priorities: InterpretationDraft
     ranking: InterpretationDraft
-    group_comparisons: tuple[InterpretationDraft, ...]
+    group_comparisons: tuple[InterpretationDraft, ...] = Field(min_length=1)
     agreement: tuple[InterpretationDraft, ...]
     influence: tuple[InterpretationDraft, ...]
     robustness: tuple[InterpretationDraft, ...]
-    limitations: tuple[InterpretationDraft, ...]
+    limitations: tuple[InterpretationDraft, ...] = Field(min_length=1)
 
 
 DCLStageInput = Annotated[

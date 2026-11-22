@@ -3,13 +3,23 @@ from __future__ import annotations
 from pydantic import TypeAdapter
 
 from src.ai.comprehension.models import (
+    PROCESSING_EVIDENCE_ID,
+    DCLRunState,
     DiagnosticContext,
     EvidenceReference,
     GroupCalculationView,
+    GroupContext,
+    GroupProfileArtifact,
     GroupProfileInput,
     PriorInterpretation,
     ProcessingContext,
+    ScenarioAssumption,
+    ScenarioConstraint,
     ScenarioContext,
+    ScenarioObjective,
+    SessionCalculationView,
+    SessionProfileInput,
+    SessionUnderstandingArtifact,
     SessionUnderstandingInput,
 )
 from src.experiments.results import RunResult
@@ -40,6 +50,18 @@ _AGGREGATION_CONFIG_ADAPTER = TypeAdapter(
 
 _CONSISTENCY_CONFIG_ADAPTER = TypeAdapter(
     ConsistencyMethodConfig
+)
+
+_SCENARIO_OBJECTIVES_ADAPTER = TypeAdapter(
+    tuple[ScenarioObjective, ...]
+)
+
+_SCENARIO_ASSUMPTIONS_ADAPTER = TypeAdapter(
+    tuple[ScenarioAssumption, ...]
+)
+
+_SCENARIO_CONSTRAINTS_ADAPTER = TypeAdapter(
+    tuple[ScenarioConstraint, ...]
 )
 
 
@@ -88,11 +110,19 @@ def _resolved_objects(
         decision_question=inputs[
             "scenario_policy_question"
         ],
-
-        # TODO: These fields are not currently present in the experiment schema.
-        objectives=None,
-        assumptions=None,
-        constraints=None,
+        context=inputs.get("scenario_context"),
+        objectives=_optional_scenario_collection(
+            _SCENARIO_OBJECTIVES_ADAPTER,
+            inputs.get("scenario_objectives"),
+        ),
+        assumptions=_optional_scenario_collection(
+            _SCENARIO_ASSUMPTIONS_ADAPTER,
+            inputs.get("scenario_assumptions"),
+        ),
+        constraints=_optional_scenario_collection(
+            _SCENARIO_CONSTRAINTS_ADAPTER,
+            inputs.get("scenario_constraints"),
+        ),
     )
 
     criteria = tuple(
@@ -142,6 +172,45 @@ def _resolved_objects(
     )
 
 
+def _artifact_entity_ids(
+    artifact: (
+        SessionUnderstandingArtifact
+        | GroupProfileArtifact
+    ),
+) -> tuple[str, ...]:
+    if isinstance(
+        artifact,
+        SessionUnderstandingArtifact,
+    ):
+        return (
+            artifact.input_snapshot
+            .scenario.scenario_id,
+        )
+
+    group_id = artifact.request.group_id
+
+    if group_id is None:
+        raise ValueError(
+            "A group-profile artifact requires "
+            "a group identifier."
+        )
+
+    return (group_id,)
+
+
+def _optional_scenario_collection(
+    adapter: TypeAdapter,
+    value: object,
+):
+    if value is None:
+        return None
+
+    return adapter.validate_python(
+        value,
+        strict=False,
+    )
+
+
 def _session_understanding_evidence(
     *,
     scenario: ScenarioContext,
@@ -149,7 +218,7 @@ def _session_understanding_evidence(
     alternatives: tuple[Alternative, ...],
     groups: tuple[StakeholderGroup, ...],
 ) -> tuple[EvidenceReference, ...]:
-    references: list[EvidenceReference] = [
+    references = [
         EvidenceReference(
             object_type="scenario",
             object_id=scenario.scenario_id,
@@ -164,6 +233,13 @@ def _session_understanding_evidence(
             object_type="scenario",
             object_id=scenario.scenario_id,
             field_path=("decision_question",),
+        ),
+
+        # These collection-level paths support statements about missing or explicitly empty sections.
+        EvidenceReference(
+            object_type="scenario",
+            object_id=scenario.scenario_id,
+            field_path=("context",),
         ),
         EvidenceReference(
             object_type="scenario",
@@ -182,6 +258,62 @@ def _session_understanding_evidence(
         ),
     ]
 
+    if scenario.context is not None:
+        for key in sorted(scenario.context):
+            references.append(
+                EvidenceReference(
+                    object_type="scenario",
+                    object_id=scenario.scenario_id,
+                    field_path=("context", key),
+                )
+            )
+
+    for objective in scenario.objectives or ():
+        for field_name in (
+            "description",
+            "priority",
+            "related_criteria",
+        ):
+            references.append(
+                EvidenceReference(
+                    object_type="objective",
+                    object_id=objective.id,
+                    field_path=(field_name,),
+                )
+            )
+
+    for assumption in scenario.assumptions or ():
+        for field_name in (
+            "statement",
+            "status",
+            "uncertainty",
+        ):
+            references.append(
+                EvidenceReference(
+                    object_type="assumption",
+                    object_id=assumption.id,
+                    field_path=(field_name,),
+                )
+            )
+
+    for constraint in scenario.constraints or ():
+        for field_name in (
+            "description",
+            "type",
+            "parameter",
+            "operator",
+            "value",
+            "unit",
+            "verification_status",
+            "scope",
+        ):
+            references.append(
+                EvidenceReference(
+                    object_type="constraint",
+                    object_id=constraint.id,
+                    field_path=(field_name,),
+                )
+            )
     for criterion in criteria:
         for field_name in (
             "name",
@@ -225,7 +357,181 @@ def _session_understanding_evidence(
                 )
             )
 
+    for field_name in (
+        "weighting_method",
+        "ranking_method",
+        "aggregation_method",
+        "consistency_method",
+    ):
+        references.append(
+            EvidenceReference(
+                object_type="processing",
+                object_id=PROCESSING_EVIDENCE_ID,
+                field_path=(field_name,),
+            )
+        )
+
     return tuple(references)
+
+def _session_calculation(
+    result: RunResult,
+) -> SessionCalculationView | None:
+    calculation = result.mcdm.session
+
+    if calculation is None:
+        return None
+
+    if calculation.scope != "session":
+        raise ValueError(
+            "The session calculation has a "
+            "non-session scope."
+        )
+
+    return SessionCalculationView.from_calculation(
+        calculation
+    )
+
+def _session_group_contexts(
+    *,
+    result: RunResult,
+    groups: tuple[StakeholderGroup, ...],
+) -> tuple[GroupContext, ...]:
+    calculations = _group_calculations(result)
+
+    configured_ids = {
+        group.id
+        for group in groups
+    }
+
+    unknown_ids = (
+        set(calculations)
+        - configured_ids
+    )
+
+    if unknown_ids:
+        raise ValueError(
+            "Group calculations reference unknown "
+            "configured groups."
+        )
+
+    return tuple(
+        GroupContext(
+            group=group,
+            calculation=calculations.get(group.id),
+        )
+        for group in groups
+    )
+
+def _validate_session_diagnostics(
+    *,
+    diagnostics: tuple[
+        DiagnosticContext, ...
+    ],
+    groups: tuple[GroupContext, ...],
+    calculation: (
+        SessionCalculationView | None
+    ),
+) -> None:
+    diagnostic_ids = [
+        diagnostic.diagnostic_id
+        for diagnostic in diagnostics
+    ]
+
+    if len(diagnostic_ids) != len(
+        set(diagnostic_ids)
+    ):
+        raise ValueError(
+            "Session diagnostics must have "
+            "unique identifiers."
+        )
+
+    known_entity_ids = {
+        group.group.id
+        for group in groups
+    }
+
+    if calculation is not None:
+        known_entity_ids.add(
+            calculation.entity_id
+        )
+
+    for diagnostic in diagnostics:
+        if not diagnostic.entity_ids:
+            raise ValueError(
+                "A session diagnostic must identify "
+                "the entities it covers."
+            )
+
+        unknown = (
+            set(diagnostic.entity_ids)
+            - known_entity_ids
+        )
+
+        if unknown:
+            raise ValueError(
+                "A session diagnostic references "
+                "unknown entities."
+            )
+
+
+def _session_profile_evidence(
+    *,
+    scenario: ScenarioContext,
+    criteria: tuple[Criterion, ...],
+    alternatives: tuple[Alternative, ...],
+    groups: tuple[GroupContext, ...],
+    calculation: (
+        SessionCalculationView | None
+    ),
+    diagnostics: tuple[
+        DiagnosticContext, ...
+    ],
+) -> tuple[EvidenceReference, ...]:
+    references = list(
+        _session_understanding_evidence(
+            scenario=scenario,
+            criteria=criteria,
+            alternatives=alternatives,
+            groups=tuple(
+                group.group
+                for group in groups
+            ),
+        )
+    )
+
+    for group in groups:
+        if group.calculation is not None:
+            references.extend(
+                _calculation_evidence(
+                    group.calculation
+                )
+            )
+
+    if calculation is not None:
+        references.extend(
+            _calculation_evidence(calculation)
+        )
+
+    for diagnostic in diagnostics:
+        for field_name in (
+            "method",
+            "entity_ids",
+            "status",
+            "result",
+            "limitations",
+        ):
+            references.append(
+                EvidenceReference(
+                    object_type="diagnostic",
+                    object_id=(
+                        diagnostic.diagnostic_id
+                    ),
+                    field_path=(field_name,),
+                )
+            )
+
+    return tuple(references)
+
 
 def _group_calculations(
     result: RunResult,
@@ -314,96 +620,9 @@ def _group_profile_evidence(
         ))
 
     if calculation is not None:
-        if calculation.weighting is not None:
-            references.extend((
-                EvidenceReference(
-                    object_type="calculation",
-                    object_id=calculation.entity_id,
-                    field_path=(
-                        "weighting",
-                        "criterion_weights",
-                    ),
-                ),
-                EvidenceReference(
-                    object_type="calculation",
-                    object_id=calculation.entity_id,
-                    field_path=(
-                        "weighting",
-                        "consistency_ratio",
-                    ),
-                ),
-                EvidenceReference(
-                    object_type="calculation",
-                    object_id=calculation.entity_id,
-                    field_path=(
-                        "weighting",
-                        "consistency_threshold",
-                    ),
-                ),
-            ))
-
-        if calculation.ranking is not None:
-            references.append(
-                EvidenceReference(
-                    object_type="calculation",
-                    object_id=calculation.entity_id,
-                    field_path=(
-                        "ranking",
-                        "rankings",
-                    ),
-                )
-            )
-
-        references.extend((
-            EvidenceReference(
-                object_type="calculation",
-                object_id=calculation.entity_id,
-                field_path=(
-                    "metadata",
-                    "participant_count",
-                ),
-            ),
-            EvidenceReference(
-                object_type="calculation",
-                object_id=calculation.entity_id,
-                field_path=(
-                    "metadata",
-                    "voting_power",
-                ),
-            ),
-            EvidenceReference(
-                object_type="calculation",
-                object_id=calculation.entity_id,
-                field_path=(
-                    "metadata",
-                    "effective_voting_power",
-                ),
-            ),
-            EvidenceReference(
-                object_type="calculation",
-                object_id=calculation.entity_id,
-                field_path=(
-                    "metadata",
-                    "ranking_criterion_ids",
-                ),
-            ),
-            EvidenceReference(
-                object_type="calculation",
-                object_id=calculation.entity_id,
-                field_path=(
-                    "metadata",
-                    "applied_criterion_weights",
-                ),
-            ),
-            EvidenceReference(
-                object_type="calculation",
-                object_id=calculation.entity_id,
-                field_path=(
-                    "metadata",
-                    "ranking_weight_source",
-                ),
-            ),
-        ))
+        references.extend(
+            _calculation_evidence(calculation)
+        )
 
     for diagnostic in diagnostics:
         references.extend((
@@ -450,6 +669,67 @@ def _validate_group_diagnostics(
             )
 
 
+def _calculation_evidence(
+    calculation: (
+        GroupCalculationView
+        | SessionCalculationView
+    ),
+) -> tuple[EvidenceReference, ...]:
+    references: list[EvidenceReference] = []
+
+    if calculation.weighting is not None:
+        for field_name in (
+            "criterion_weights",
+            "consistency_ratio",
+            "consistency_threshold",
+        ):
+            references.append(
+                EvidenceReference(
+                    object_type="calculation",
+                    object_id=calculation.entity_id,
+                    field_path=(
+                        "weighting",
+                        field_name,
+                    ),
+                )
+            )
+
+    if calculation.ranking is not None:
+        references.append(
+            EvidenceReference(
+                object_type="calculation",
+                object_id=calculation.entity_id,
+                field_path=(
+                    "ranking",
+                    "rankings",
+                ),
+            )
+        )
+
+    for field_name in (
+        "participant_count",
+        "voting_power",
+        "effective_voting_power",
+        "ranking_criterion_ids",
+        "applied_criterion_weights",
+        "ranking_weight_source",
+        "weighting_source",
+        "stages",
+    ):
+        references.append(
+            EvidenceReference(
+                object_type="calculation",
+                object_id=calculation.entity_id,
+                field_path=(
+                    "metadata",
+                    field_name,
+                ),
+            )
+        )
+
+    return tuple(references)
+
+
 def build_session_understanding_input(
     *,
     result: RunResult,
@@ -485,14 +765,254 @@ def build_session_understanding_input(
         scenario=scenario,
         criteria=criteria,
         alternatives=alternatives,
-        groups=groups,
         processing=processing,
+        groups=groups,
         available_evidence=available_evidence,
         required_limitations=required_limitations,
-
-        # Enforced by SessionUnderstandingInput as well.
         prior_interpretations=(),
     )
+
+
+def build_session_profile_input(
+    *,
+    result: RunResult,
+    state: DCLRunState,
+    diagnostics: tuple[
+        DiagnosticContext, ...
+    ] = (),
+    required_limitations: tuple[str, ...] = (),
+) -> SessionProfileInput:
+    if state.run_id != result.run_id:
+        raise ValueError(
+            "Session-profile state and numerical "
+            "result must identify the same run."
+        )
+
+    if state.session_profile is not None:
+        raise ValueError(
+            "Session-profile input cannot be built "
+            "from a state that already contains a "
+            "session-profile artifact."
+        )
+
+    if state.session_understanding is None:
+        raise ValueError(
+            "Session-profile input requires successful "
+            "session understanding."
+        )
+
+    require_completed_numerical_result(result)
+
+    (
+        scenario,
+        criteria,
+        alternatives,
+        configured_groups,
+        processing,
+    ) = _resolved_objects(result)
+
+    groups = _session_group_contexts(
+        result=result,
+        groups=configured_groups,
+    )
+
+    calculation = _session_calculation(result)
+
+    _validate_session_diagnostics(
+        diagnostics=diagnostics,
+        groups=groups,
+        calculation=calculation,
+    )
+
+    calculation_ids = [
+        group.calculation.entity_id
+        for group in groups
+        if group.calculation is not None
+    ]
+
+    if calculation is not None:
+        calculation_ids.append(
+            calculation.entity_id
+        )
+
+    if len(calculation_ids) != len(
+        set(calculation_ids)
+    ):
+        raise ValueError(
+            "Group and session calculations must "
+            "have unique identifiers."
+        )
+
+    limitations = list(required_limitations)
+
+    if calculation is None:
+        limitations.append(
+            "No aggregate session calculation was "
+            "produced; aggregate priorities and "
+            "ranking are unavailable."
+        )
+
+    missing_group_ids = [
+        group.group.id
+        for group in groups
+        if group.calculation is None
+    ]
+
+    if missing_group_ids:
+        limitations.append(
+            "No group calculation was produced for: "
+            + ", ".join(missing_group_ids)
+            + "."
+        )
+
+    available_evidence = (
+        _session_profile_evidence(
+            scenario=scenario,
+            criteria=criteria,
+            alternatives=alternatives,
+            groups=groups,
+            calculation=calculation,
+            diagnostics=diagnostics,
+        )
+    )
+
+    prior_interpretations = (
+        _session_profile_priors(
+            state=state,
+            available_evidence=available_evidence,
+        )
+    )
+
+    return SessionProfileInput(
+        scenario=scenario,
+        criteria=criteria,
+        alternatives=alternatives,
+        processing=processing,
+        groups=groups,
+        calculation=calculation,
+        diagnostics=diagnostics,
+        available_evidence=available_evidence,
+        required_limitations=tuple(limitations),
+
+        # Added only after safe downstream selection.
+        prior_interpretations=(
+            prior_interpretations
+        ),
+    )
+
+
+def _session_profile_priors(
+    *,
+    state: DCLRunState,
+    available_evidence: tuple[
+        EvidenceReference, ...
+    ],
+) -> tuple[PriorInterpretation, ...]:
+    session_artifact = (
+        state.session_understanding
+    )
+
+    if session_artifact is None:
+        raise ValueError(
+            "Session-profile construction requires "
+            "a session-understanding artifact."
+        )
+
+    artifacts = (
+        session_artifact,
+        *state.group_profiles,
+    )
+
+    available = {
+        reference.identity()
+        for reference in available_evidence
+    }
+
+    priors: list[PriorInterpretation] = []
+    finding_ids: set[str] = set()
+
+    for artifact in artifacts:
+        if (
+            artifact.request.run_id
+            != state.run_id
+            or artifact.request.ai_repetition
+            != state.ai_repetition
+        ):
+            raise ValueError(
+                "Prior artifacts cannot mix runs "
+                "or AI repetitions."
+            )
+
+        if (
+            artifact.content_review.status
+            == "rejected"
+        ):
+            continue
+
+        entity_ids = _artifact_entity_ids(
+            artifact
+        )
+
+        for finding in artifact.findings:
+            if (
+                finding.reference_status
+                != "validated"
+            ):
+                continue
+
+            if (
+                finding.content_review.status
+                == "rejected"
+            ):
+                continue
+
+            if finding.finding_id in finding_ids:
+                raise ValueError(
+                    "Prior finding identifiers "
+                    "must be unique."
+                )
+
+            cited = {
+                reference.identity()
+                for reference
+                in finding.draft.evidence
+            }
+
+            if not cited <= available:
+                raise ValueError(
+                    "A prior finding cites evidence "
+                    "that is unavailable in the "
+                    "session-profile snapshot."
+                )
+
+            finding_ids.add(
+                finding.finding_id
+            )
+
+            priors.append(
+                PriorInterpretation(
+                    finding_id=(
+                        finding.finding_id
+                    ),
+                    source_request_id=(
+                        artifact.request.request_id
+                    ),
+                    source_run_id=(
+                        artifact.request.run_id
+                    ),
+                    entity_ids=entity_ids,
+
+                    # Preserve the model output exactly.
+                    draft=finding.draft,
+
+                    # Preserve review status.
+                    content_status=(
+                        finding.content_review.status
+                    ),
+                )
+            )
+
+    return tuple(priors)
 
 
 def build_group_profile_input(

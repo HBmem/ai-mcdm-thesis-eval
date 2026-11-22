@@ -218,9 +218,20 @@ def main(argv=None):
     
             print(f"Results: {batch_directory}")
     
+            numerical_succeeded = all(
+                result.status == "passed"
+                for result in results
+            )
+
+            ai_succeeded = all(
+                result.execution.get("ai_status")
+                in {"completed", "not_requested"}
+                for result in results
+            )
+
             return (
                 0
-                if all(result.status == "passed" for result in results)
+                if numerical_succeeded and ai_succeeded
                 else 1
             )
 
@@ -235,77 +246,6 @@ def main(argv=None):
     except ArtifactWriteError as error:
         print(f"Artifact error: {error}", file=sys.stderr)
         return 1
-    
-    # if args.ai:
-    #     try:
-    #         # Configure AI connection
-    #         ai_config = AIConfig.from_env(ROOT / ".env")
-
-    #         # Check AI connection
-    #         with ai_config.client() as client:
-    #             print("Checking AI key and model access...")
-    #             preflight = check_model_access(ai_config, client)
-    #             print("AI access check passed.")
-
-    #             batch_directory, results = execute_experiments(
-    #                 runs,
-    #                 args.output,
-    #                 ai_config=ai_config,
-    #                 ai_client=client,
-    #                 preflight=preflight
-    #             )
-
-    #     except ValueError as error:
-    #         print(f"Configuration error: {error}", file=sys.stderr)
-    #         return 2
-    #     except PreflightError as error:
-    #         print(f"AI startup check failed: {error}", file=sys.stderr)
-    #         return error.exit_code
-    #     except ArtifactWriteError as error:
-    #         print(f"Artifact error: {error}",file=sys.stderr)
-    #         return 1
-    #     for result in results:
-    #         print(f"{result.execution['execution_key']}: {result.status}")
-
-    #         for message in result.execution.get("messages", []):
-    #             print(f"  {message}")
-
-    #     print(f"Results: {batch_directory}")
-
-    #     return (
-    #         0
-    #         if all(result.status == "passed" for result in results)
-    #         else 1
-    #     )
-    
-    # else:
-    #     try:
-    #         batch_directory, results = execute_experiments(
-    #             runs,
-    #             args.output,
-    #         )
-
-    #     except ValueError as error:
-    #         print(f"Configuration error: {error}", file=sys.stderr)
-    #         return 2
-
-    #     except ArtifactWriteError as error:
-    #         print(f"Artifact error: {error}",file=sys.stderr)
-    #         return 1
-
-    #     for result in results:
-    #         print(f"{result.execution['execution_key']}: {result.status}")
-
-    #         for message in result.execution.get("messages", []):
-    #             print(f"  {message}")
-
-    #     print(f"Results: {batch_directory}")
-
-    #     return (
-    #         0
-    #         if all(result.status == "passed" for result in results)
-    #         else 1
-    #     )
 
 
 if __name__ == "__main__":

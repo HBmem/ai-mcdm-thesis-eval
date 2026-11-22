@@ -44,6 +44,17 @@ def _read_json(path: Path) -> dict[str, Any]:
         raise ValueError(f"{path}: expected a JSON object.")
     return data
 
+
+def _optional_copy(
+    mapping: dict[str, Any],
+    key: str,
+) -> Any:
+    if key not in mapping:
+        return None
+
+    return deepcopy(mapping[key])
+
+
 def _ai(data: dict[str, Any]) -> ExperimentAI:
     """Validate and retain AI request settings without invoking a provider."""
     if not isinstance(data, dict):
@@ -114,6 +125,7 @@ def _ai(data: dict[str, Any]) -> ExperimentAI:
         parameters=deepcopy(parameters), prompt_overrides=deepcopy(overrides),
         reported_result_interventions=deepcopy(interventions),
     )
+
 
 def _processing(data: dict[str, Any]) -> ExperimentProcess:
     if not isinstance(data, dict):
@@ -288,6 +300,8 @@ def load_experiment_json(path: Path | str) -> list[Experiment]:
         {path: data}, base_inputs={data["experiment_id"]: (participants, groups)},
         validate_references=False,
     )
+
+    scenario = data["scenario"]
     experiments = []
     for resolved in resolved_cases:
         case = resolved.case
@@ -311,6 +325,22 @@ def load_experiment_json(path: Path | str) -> list[Experiment]:
             scenario_id=data["scenario"]["id"],
             scenario_description=data["scenario"]["description"],
             scenario_policy_question=data["scenario"]["policy_question"],
+            scenario_context=_optional_copy(
+                scenario,
+                "context",
+            ),
+            scenario_objectives=_optional_copy(
+                scenario,
+                "objectives",
+            ),
+            scenario_assumptions=_optional_copy(
+                scenario,
+                "assumptions",
+            ),
+            scenario_constraints=_optional_copy(
+                scenario,
+                "constraints",
+            ),
             resources=deepcopy(resources),
             processing=deepcopy(process),
             execution=ExperimentExecution(

@@ -126,6 +126,10 @@ class Experiment:
     scenario_id: str
     scenario_description: str
     scenario_policy_question: str
+    scenario_context: dict[str, Any] | None
+    scenario_objectives: list[dict[str, Any]] | None
+    scenario_assumptions: list[dict[str, Any]] | None
+    scenario_constraints: list[dict[str, Any]] | None
     resources: ExperimentResources
     processing: ExperimentProcess
     execution: ExperimentExecution

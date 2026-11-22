@@ -21,8 +21,8 @@ from importlib.metadata import PackageNotFoundError, version
 from datetime import datetime, timezone
 from typing import Literal
 
-from src.ai.comprehension.orchestration import run_group_profiles_for_result
-from src.ai.comprehension.storage import save_group_profiles_outcome
+from src.ai.comprehension.orchestration import run_dcl_repetition_for_result
+from src.ai.comprehension.storage import save_dcl_repetition_outcome
 from src.common.time import timestamp
 from src.experiments.assertions import validate_assertions, evaluate_declared_assertions
 from src.experiments.models import Experiment, ReusedWeighting, ResolvedExecutionInputs
@@ -57,6 +57,10 @@ ALLOWED_POLICIES = {
     "criterion_alignment": {"require_identical_ids", "common_ids"},
 }
 ALLOWED_SCOPES = {"participant", "group", "session"}
+
+IMPLEMENTED_AI_LAYERS = frozenset({
+    "data_comprehension",
+})
 
 ProgressCallback = Callable[[ProgressEvent], None]
 
@@ -2337,6 +2341,70 @@ def execute_experiments(
     if ai_runs and ai_component is None:
         raise ValueError("AI-enabled experiments require an initialized AI component.")
 
+    if ai_runs:
+        assert ai_component is not None
+
+        for run in ai_runs:
+            request = run.experiment.ai
+
+            # unsupported_layers = (
+            #     set(request.layers)
+            #     - IMPLEMENTED_AI_LAYERS
+            # )
+
+            # if unsupported_layers:
+            #     names = ", ".join(
+            #         sorted(unsupported_layers)
+            #     )
+
+            #     raise ValueError(
+            #         f"{run.key}: requested AI layers "
+            #         f"are not implemented: {names}."
+            #     )
+
+            if (
+                request.provider is not None
+                and request.provider
+                != ai_component.config.provider.value
+            ):
+                raise ValueError(
+                    f"{run.key}: requested provider "
+                    f"{request.provider!r} does not match "
+                    "the configured provider "
+                    f"{ai_component.config.provider.value!r}."
+                )
+
+            if (
+                request.model is not None
+                and request.model
+                != ai_component.config.model
+            ):
+                raise ValueError(
+                    f"{run.key}: requested model "
+                    f"{request.model!r} does not match "
+                    "the configured model "
+                    f"{ai_component.config.model!r}."
+                )
+
+            if request.parameters:
+                raise ValueError(
+                    f"{run.key}: experiment-specific AI "
+                    "parameters are not implemented."
+                )
+
+            if request.prompt_overrides:
+                raise ValueError(
+                    f"{run.key}: prompt overrides are "
+                    "not implemented."
+                )
+
+            if request.reported_result_interventions:
+                raise ValueError(
+                    f"{run.key}: reported-result AI "
+                    "interventions are not implemented "
+                    "for this execution path."
+                )
+
     _validate_execution_order(runs)
 
     batch_id = (
@@ -2682,7 +2750,9 @@ def execute_experiments(
                 continue
 
             result.execution["ai_scope"] = [
-                "data_comprehension.stakeholder_group_profiles"
+                "data_comprehension.session_understanding",
+                "data_comprehension.stakeholder_group_profiles",
+                "data_comprehension.session_profile",
             ]
 
             result.execution["ai_status"] = "running"
@@ -2722,19 +2792,32 @@ def execute_experiments(
                     state="started",
                 ))
 
-                outcome = run_group_profiles_for_result(
+                outcome = run_dcl_repetition_for_result(
                     backend=ai_component.backend,
                     result=result,
                     ai_repetition=ai_repetition,
-                    max_retries=ai_component.config.max_retries,
-                    required_limitations=(
+                    max_retries=(
+                        ai_component.config.max_retries
+                    ),
+                    session_understanding_limitations=(
+                        "Authored scenario information and "
+                        "configured model inputs are not "
+                        "independently verified empirical evidence.",
+                    ),
+                    group_profile_limitations=(
                         "Modeled group results do not establish "
-                        "unanimity, motivation, or broader population "
-                        "preferences.",
+                        "unanimity, motivation, or broader "
+                        "population preferences.",
+                    ),
+                    session_profile_limitations=(
+                        "Aggregate modeled results do not by "
+                        "themselves establish consensus, actual "
+                        "influence, causal effects, robustness, "
+                        "feasibility, or policy desirability.",
                     ),
                 )
 
-                artifact_root = save_group_profiles_outcome(
+                artifact_root = save_dcl_repetition_outcome(
                     run_directory=run_directory,
                     outcome=outcome,
                     save_ai_calls=flags["save_ai_calls"],
@@ -2743,12 +2826,7 @@ def execute_experiments(
                     ],
                 )
 
-                if outcome.succeeded:
-                    repetition_status = "completed"
-                elif outcome.state.group_profiles:
-                    repetition_status = "partial"
-                else:
-                    repetition_status = "failed"
+                repetition_status = outcome.status
 
                 repetition_statuses.append(
                     repetition_status
@@ -2757,7 +2835,22 @@ def execute_experiments(
                 result.execution["ai_repetitions"][
                     str(ai_repetition)
                 ] = {
-                    "status": repetition_status,
+                    "status": outcome.status,
+                    "stages": {
+                        "session_understanding": (
+                            outcome
+                            .session_understanding_status
+                        ),
+                        "stakeholder_group_profiles": (
+                            outcome.group_profiles_status
+                        ),
+                        "session_profile": (
+                            outcome.session_profile_status
+                        ),
+                    },
+                    "expected_group_ids": list(
+                        outcome.expected_group_ids
+                    ),
                     "successful_group_ids": [
                         artifact.request.group_id
                         for artifact
@@ -2766,6 +2859,19 @@ def execute_experiments(
                     "failed_group_ids": list(
                         outcome.failed_group_ids
                     ),
+                    "artifacts": {
+                        "session_understanding": (
+                            outcome.state.session_understanding
+                            is not None
+                        ),
+                        "group_profile_count": len(
+                            outcome.state.group_profiles
+                        ),
+                        "session_profile": (
+                            outcome.state.session_profile
+                            is not None
+                        ),
+                    },
                     "call_count": len(outcome.calls),
                     "artifact_directory": (
                         artifact_root
@@ -2786,6 +2892,12 @@ def execute_experiments(
                         time.perf_counter() - repetition_started
                     ),
                     detail=(
+                        "session understanding="
+                        f"{outcome.session_understanding_status}; "
+                        "group profiles="
+                        f"{outcome.group_profiles_status}; "
+                        "session profile="
+                        f"{outcome.session_profile_status}; "
                         f"{len(outcome.state.group_profiles)} "
                         "group profile(s) completed; "
                         f"{len(outcome.failed_group_ids)} failed"
@@ -2796,17 +2908,16 @@ def execute_experiments(
                 status == "completed"
                 for status in repetition_statuses
             ):
-                result.execution["ai_status"] = "completed"
-
+                ai_status = "completed"
             elif any(
                 status in {"completed", "partial"}
                 for status in repetition_statuses
             ):
-                result.execution["ai_status"] = "partial"
-
+                ai_status = "partial"
             else:
-                result.execution["ai_status"] = "failed"
+                ai_status = "failed"
 
+            result.execution["ai_status"] = ai_status
             result.execution["ai_completed_at"] = timestamp()
             result.execution["ai_duration_seconds"] = (
                 time.perf_counter() - ai_started
@@ -2868,14 +2979,35 @@ def execute_experiments(
         )
         
         manifest["phase"] = "finished"
-        manifest["status"] = (
-            "completed"
-            if all(
-                result.status == "passed"
-                for result in results
-            )
-            else "failed"
+
+        numerical_succeeded = all(
+            result.status == "passed"
+            for result in results
         )
+
+        requested_ai_results = [
+            result
+            for run, result in zip(
+                runs,
+                results,
+                strict=True,
+            )
+            if run.experiment.ai.enabled
+        ]
+
+        ai_succeeded = all(
+            result.execution.get("ai_status")
+            == "completed"
+            for result in requested_ai_results
+        )
+
+        if not numerical_succeeded:
+            manifest["status"] = "failed"
+        elif requested_ai_results and not ai_succeeded:
+            manifest["status"] = "partial"
+        else:
+            manifest["status"] = "completed"
+            
         manifest["result_status_counts"] = dict(Counter(
             result.status
             for result in results

@@ -6,8 +6,31 @@ from typing import Generic, TypeVar
 from uuid import uuid4, uuid5, NAMESPACE_URL
 
 from src.ai.backend import BackendCallError, StructuredAIBackend, StructuredGeneration
-from src.ai.comprehension.models import DCLCallError, DCLCallRecord, DCLRequestMetadata, DCLStageInput, GroupProfileArtifact, GroupProfileInput, GroupProfileResponse, PromptMessage, StoredInterpretation
-from src.ai.comprehension.prompts import GROUP_PROFILE_PROMPT_VERSION, build_group_profile_messages
+from src.ai.comprehension.models import (
+    DCLCallError,
+    DCLCallRecord,
+    DCLRequestMetadata,
+    DCLStageInput,
+    SessionProfileArtifact,
+    SessionProfileInput,
+    SessionProfileResponse,
+    SessionUnderstandingArtifact,
+    SessionUnderstandingInput,
+    SessionUnderstandingResponse,
+    GroupProfileArtifact,
+    GroupProfileInput,
+    GroupProfileResponse,
+    PromptMessage,
+    StoredInterpretation,
+)
+from src.ai.comprehension.prompts import (
+    SESSION_PROFILE_PROMPT_VERSION,
+    SESSION_UNDERSTANDING_PROMPT_VERSION,
+    GROUP_PROFILE_PROMPT_VERSION,
+    build_group_profile_messages,
+    build_session_profile_messages,
+    build_session_understanding_messages,
+)
 from src.ai.comprehension.serialization import hash_input_snapshot
 from src.ai.comprehension.validation import materialize_validated_findings, validate_available_evidence, validate_response_evidence
 from src.ai.models.analysis import Record
@@ -265,6 +288,127 @@ def run_dcl_stage(
     raise RuntimeError("Unreachable DCL retry state.")
 
 
+def run_session_understanding_stage(
+    *,
+    backend: StructuredAIBackend,
+    request: DCLRequestMetadata,
+    input_snapshot: SessionUnderstandingInput,
+    max_retries: int,
+) -> DCLStageOutcome[
+    SessionUnderstandingResponse
+]:
+    if request.stage != "session_understanding":
+        raise ValueError(
+            "Session-understanding execution requires "
+            "session-understanding request metadata."
+        )
+
+    if request.group_id is not None:
+        raise ValueError(
+            "Session-understanding requests must not "
+            "claim a group scope."
+        )
+
+    if (
+        request.prompt_version
+        != SESSION_UNDERSTANDING_PROMPT_VERSION
+    ):
+        raise ValueError(
+            "Request prompt version does not match "
+            "the active session-understanding prompt."
+        )
+
+    if request.input_hash != hash_input_snapshot(
+        input_snapshot
+    ):
+        raise ValueError(
+            "Request input hash does not match the "
+            "supplied input snapshot."
+        )
+
+    messages = build_session_understanding_messages(
+        input_snapshot
+    )
+
+    return run_dcl_stage(
+        backend=backend,
+        request=request,
+        input_snapshot=input_snapshot,
+        messages=messages,
+        response_model=(
+            SessionUnderstandingResponse
+        ),
+        max_retries=max_retries,
+    )
+
+
+def build_session_understanding_artifact(
+    *,
+    request: DCLRequestMetadata,
+    input_snapshot: SessionUnderstandingInput,
+    outcome: DCLStageOutcome[
+        SessionUnderstandingResponse
+    ],
+) -> SessionUnderstandingArtifact:
+    if not outcome.succeeded:
+        raise ValueError(
+            "Cannot build an artifact from a failed "
+            "session-understanding outcome."
+        )
+
+    generation = outcome.generation
+
+    if generation is None:
+        raise RuntimeError(
+            "Successful outcome is missing its generation."
+        )
+
+    if request.stage != "session_understanding":
+        raise ValueError(
+            "Session-understanding artifact requires "
+            "matching request metadata."
+        )
+
+    if request.group_id is not None:
+        raise ValueError(
+            "Session-understanding artifact must not "
+            "claim a group scope."
+        )
+
+    final_call = outcome.calls[-1]
+
+    if final_call.status != "completed":
+        raise ValueError(
+            "An artifact requires a completed final call."
+        )
+
+    if final_call.parsed_response != generation.value:
+        raise ValueError(
+            "Final call response does not match the "
+            "stage generation."
+        )
+
+    if final_call.receipt != generation.receipt:
+        raise ValueError(
+            "Final call receipt does not match the "
+            "stage generation."
+        )
+
+    return SessionUnderstandingArtifact(
+        artifact_id=make_artifact_id(
+            request.request_id
+        ),
+        request=request,
+        input_snapshot=input_snapshot,
+        response=generation.value,
+        receipt=generation.receipt,
+        findings=outcome.findings,
+        required_limitations=(
+            input_snapshot.required_limitations
+        ),
+    )
+
+
 def run_group_profile_stage(
     *,
     backend: StructuredAIBackend,
@@ -347,6 +491,121 @@ def build_group_profile_artifact(
         )
 
     return GroupProfileArtifact(
+        artifact_id=make_artifact_id(
+            request.request_id
+        ),
+        request=request,
+        input_snapshot=input_snapshot,
+        response=generation.value,
+        receipt=generation.receipt,
+        findings=outcome.findings,
+        required_limitations=(
+            input_snapshot.required_limitations
+        ),
+    )
+
+def run_session_profile_stage(
+    *,
+    backend: StructuredAIBackend,
+    request: DCLRequestMetadata,
+    input_snapshot: SessionProfileInput,
+    max_retries: int,
+) -> DCLStageOutcome[SessionProfileResponse]:
+    if request.stage != "session_profile":
+        raise ValueError(
+            "Session-profile execution requires "
+            "session-profile request metadata."
+        )
+
+    if request.group_id is not None:
+        raise ValueError(
+            "Session-profile requests must not "
+            "claim a group scope."
+        )
+
+    if (
+        request.prompt_version
+        != SESSION_PROFILE_PROMPT_VERSION
+    ):
+        raise ValueError(
+            "Request prompt version does not match "
+            "the active session-profile prompt."
+        )
+
+    if request.input_hash != hash_input_snapshot(
+        input_snapshot
+    ):
+        raise ValueError(
+            "Request input hash does not match the "
+            "supplied input snapshot."
+        )
+
+    messages = build_session_profile_messages(
+        input_snapshot
+    )
+
+    return run_dcl_stage(
+        backend=backend,
+        request=request,
+        input_snapshot=input_snapshot,
+        messages=messages,
+        response_model=SessionProfileResponse,
+        max_retries=max_retries,
+    )
+
+def build_session_profile_artifact(
+    *,
+    request: DCLRequestMetadata,
+    input_snapshot: SessionProfileInput,
+    outcome: DCLStageOutcome[
+        SessionProfileResponse
+    ],
+) -> SessionProfileArtifact:
+    if not outcome.succeeded:
+        raise ValueError(
+            "Cannot build an artifact from a failed "
+            "session-profile outcome."
+        )
+
+    generation = outcome.generation
+
+    if generation is None:
+        raise RuntimeError(
+            "Successful outcome is missing its generation."
+        )
+
+    if request.stage != "session_profile":
+        raise ValueError(
+            "Session-profile artifact requires "
+            "matching request metadata."
+        )
+
+    if request.group_id is not None:
+        raise ValueError(
+            "Session-profile artifact must not claim "
+            "a group scope."
+        )
+
+    final_call = outcome.calls[-1]
+
+    if final_call.status != "completed":
+        raise ValueError(
+            "An artifact requires a completed final call."
+        )
+
+    if final_call.parsed_response != generation.value:
+        raise ValueError(
+            "Final call response does not match the "
+            "stage generation."
+        )
+
+    if final_call.receipt != generation.receipt:
+        raise ValueError(
+            "Final call receipt does not match the "
+            "stage generation."
+        )
+
+    return SessionProfileArtifact(
         artifact_id=make_artifact_id(
             request.request_id
         ),
