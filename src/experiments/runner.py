@@ -23,6 +23,8 @@ from typing import Literal
 
 from src.ai.comprehension.orchestration import run_dcl_repetition_for_result
 from src.ai.comprehension.storage import save_dcl_repetition_outcome
+from src.ai.reporting.orchestration import run_reporting_for_dcl_repetition
+from src.ai.reporting.storage import save_data_explanation_reporting_outcome
 from src.common.time import timestamp
 from src.experiments.assertions import validate_assertions, evaluate_declared_assertions
 from src.experiments.models import Experiment, ReusedWeighting, ResolvedExecutionInputs
@@ -60,6 +62,7 @@ ALLOWED_SCOPES = {"participant", "group", "session"}
 
 IMPLEMENTED_AI_LAYERS = frozenset({
     "data_comprehension",
+    "data_explanation_reporting",
 })
 
 ProgressCallback = Callable[[ProgressEvent], None]
@@ -2346,9 +2349,22 @@ def execute_experiments(
 
         for run in ai_runs:
             request = run.experiment.ai
+            requested_layers = set(request.layers)
+
+            if (
+                "data_explanation_reporting"
+                in requested_layers
+                and "data_comprehension"
+                not in requested_layers
+            ):
+                raise ValueError(
+                    f"{run.key}: "
+                    "data_explanation_reporting requires "
+                    "data_comprehension."
+                )
 
             unsupported_layers = (
-                set(request.layers)
+                requested_layers
                 - IMPLEMENTED_AI_LAYERS
             )
 
@@ -2749,11 +2765,23 @@ def execute_experiments(
                 ))
                 continue
 
-            result.execution["ai_scope"] = [
+            ai_scope = [
                 "data_comprehension.session_understanding",
                 "data_comprehension.stakeholder_group_profiles",
                 "data_comprehension.session_profile",
             ]
+
+            reporting_requested = (
+                "data_explanation_reporting"
+                in run.experiment.ai.layers
+            )
+
+            if reporting_requested:
+                ai_scope.append(
+                    "data_explanation_reporting"
+                )
+
+            result.execution["ai_scope"] = ai_scope
 
             result.execution["ai_status"] = "running"
             result.execution["ai_started_at"] = timestamp()
@@ -2792,7 +2820,7 @@ def execute_experiments(
                     state="started",
                 ))
 
-                outcome = run_dcl_repetition_for_result(
+                dcl_outcome = run_dcl_repetition_for_result(
                     backend=ai_component.backend,
                     result=result,
                     ai_repetition=ai_repetition,
@@ -2824,16 +2852,76 @@ def execute_experiments(
                     ),
                 )
 
-                artifact_root = save_dcl_repetition_outcome(
+                dcl_artifact_root = save_dcl_repetition_outcome(
                     run_directory=run_directory,
-                    outcome=outcome,
+                    outcome=dcl_outcome,
                     save_ai_calls=flags["save_ai_calls"],
                     save_ai_responses=flags[
                         "save_ai_responses"
                     ],
                 )
 
-                repetition_status = outcome.status
+                reporting_outcome = None
+                reporting_artifact_root = None
+                reporting_status = "not_requested"
+
+                if (
+                    "data_explanation_reporting"
+                    in run.experiment.ai.layers
+                ):
+                    reporting_outcome = (
+                        run_reporting_for_dcl_repetition(
+                            backend=ai_component.backend,
+                            result=result,
+                            dcl_outcome=dcl_outcome,
+                            max_retries=(
+                                ai_component.config.max_retries
+                            ),
+                            retry_base_seconds=(
+                                ai_component.config
+                                .retry_base_seconds
+                            ),
+                            retry_max_wait_seconds=(
+                                ai_component.config
+                                .retry_max_wait_seconds
+                            ),
+                            on_progress=emit,
+                        )
+                    )
+
+                    reporting_status = reporting_outcome.status
+
+                    if reporting_outcome.stage_outcome is not None:
+                        reporting_artifact_root = (
+                            save_data_explanation_reporting_outcome(
+                                run_directory=run_directory,
+                                outcome=(
+                                    reporting_outcome.stage_outcome
+                                ),
+                                artifact=reporting_outcome.artifact,
+                                save_ai_calls=(
+                                    flags["save_ai_calls"]
+                                ),
+                                save_ai_responses=(
+                                    flags["save_ai_responses"]
+                                ),
+                            )
+                        )
+
+                if reporting_status == "not_requested":
+                    repetition_status = dcl_outcome.status
+
+                elif (
+                    dcl_outcome.status == "completed"
+                    and reporting_status == "completed"
+                ):
+                    repetition_status = "completed"
+
+                elif dcl_outcome.status == "failed":
+                    repetition_status = "failed"
+
+                else:
+                    repetition_status = "partial"
 
                 repetition_statuses.append(
                     repetition_status
@@ -2842,48 +2930,74 @@ def execute_experiments(
                 result.execution["ai_repetitions"][
                     str(ai_repetition)
                 ] = {
-                    "status": outcome.status,
+                    "status": repetition_status,
                     "stages": {
                         "session_understanding": (
-                            outcome
+                            dcl_outcome
                             .session_understanding_status
                         ),
                         "stakeholder_group_profiles": (
-                            outcome.group_profiles_status
+                            dcl_outcome.group_profiles_status
                         ),
                         "session_profile": (
-                            outcome.session_profile_status
+                            dcl_outcome.session_profile_status
                         ),
+                        "data_explanation_reporting": reporting_status,
                     },
                     "expected_group_ids": list(
-                        outcome.expected_group_ids
+                        dcl_outcome.expected_group_ids
                     ),
                     "successful_group_ids": [
                         artifact.request.group_id
                         for artifact
-                        in outcome.state.group_profiles
+                        in dcl_outcome.state.group_profiles
                     ],
                     "failed_group_ids": list(
-                        outcome.failed_group_ids
+                        dcl_outcome.failed_group_ids
                     ),
                     "artifacts": {
                         "session_understanding": (
-                            outcome.state.session_understanding
+                            dcl_outcome.state.session_understanding
                             is not None
                         ),
                         "group_profile_count": len(
-                            outcome.state.group_profiles
+                            dcl_outcome.state.group_profiles
                         ),
                         "session_profile": (
-                            outcome.state.session_profile
+                            dcl_outcome.state.session_profile
                             is not None
                         ),
+                        "data_explanation_report": (
+                            reporting_outcome is not None
+                            and reporting_outcome.artifact is not None
+                        ),
                     },
-                    "call_count": len(outcome.calls),
+                    "call_count": len(dcl_outcome.calls),
+                    "reporting_call_count": (
+                        len(reporting_outcome.stage_outcome.calls)
+                        if (
+                            reporting_outcome is not None
+                            and reporting_outcome.stage_outcome
+                            is not None
+                        )
+                        else 0
+                    ),
                     "artifact_directory": (
-                        artifact_root
+                        dcl_artifact_root
                         .relative_to(run_directory)
                         .as_posix()
+                    ),
+                    "reporting_artifact_directory": (
+                        reporting_artifact_root
+                        .relative_to(run_directory)
+                        .as_posix()
+                        if reporting_artifact_root is not None
+                        else None
+                    ),
+                    "reporting_blocked_reason": (
+                        reporting_outcome.blocked_reason
+                        if reporting_outcome is not None
+                        else None
                     ),
                 }
 
@@ -2900,14 +3014,16 @@ def execute_experiments(
                     ),
                     detail=(
                         "session understanding="
-                        f"{outcome.session_understanding_status}; "
+                        f"{dcl_outcome.session_understanding_status}; "
                         "group profiles="
-                        f"{outcome.group_profiles_status}; "
+                        f"{dcl_outcome.group_profiles_status}; "
                         "session profile="
-                        f"{outcome.session_profile_status}; "
-                        f"{len(outcome.state.group_profiles)} "
+                        f"{dcl_outcome.session_profile_status}; "
+                        f"{len(dcl_outcome.state.group_profiles)} "
                         "group profile(s) completed; "
-                        f"{len(outcome.failed_group_ids)} failed"
+                        f"{len(dcl_outcome.failed_group_ids)} failed"
+                        "; data explanation reporting="
+                        f"{reporting_status}"
                     ),
                 ))
 

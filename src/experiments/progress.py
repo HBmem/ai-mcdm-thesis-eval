@@ -3,6 +3,7 @@ from typing import Literal, TypeAlias
 
 from src.ai.comprehension.progress import DCLCallProgress
 from src.ai.progress import PreflightProgress
+from src.ai.reporting.progress import ReportingCallProgress
 
 
 StageName = Literal[
@@ -64,5 +65,6 @@ ProgressEvent: TypeAlias = (
     | RunProgress
     | AIRepetitionProgress
     | DCLCallProgress
+    | ReportingCallProgress
     | PreflightProgress
 )

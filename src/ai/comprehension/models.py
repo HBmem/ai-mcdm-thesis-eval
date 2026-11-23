@@ -44,8 +44,17 @@ from src.mcdm.models.methods import (
 
 PROCESSING_EVIDENCE_ID = "mcdm_processing"
 
-StageName = Literal[
-    "session_understanding", "stakeholder_group_profile", "session_profile",
+DCLStage = Literal[
+    "session_understanding",
+    "stakeholder_group_profile",
+    "session_profile",
+]
+DiagnosticKind = Literal[
+    "agreement",
+    "influence",
+    "robustness",
+    "sensitivity",
+    "other",
 ]
 ModelAssessment = Literal["supported", "conditional", "insufficient_evidence"]
 ContentStatus = Literal["not_assessed", "accepted", "needs_review", "rejected"]
@@ -262,6 +271,7 @@ class DiagnosticContext(Record):
     """
 
     diagnostic_id: str = Field(min_length=1, description="Application-owned identifier for this analysis result.")
+    kind: DiagnosticKind
     method: str = Field(min_length=1, description="Actual diagnostic method/configuration identifier.")
     entity_ids: tuple[str, ...] = Field(description="Groups/session covered, without participant identifiers.")
     status: Literal["completed", "not_run", "not_evaluable", "failed"]
@@ -365,7 +375,7 @@ class DCLInput(Record):
     """
 
     schema_version: Literal["dcl-input-v1"] = "dcl-input-v1"
-    stage: StageName
+    stage: DCLStage
     scenario: ScenarioContext
     criteria: tuple[Criterion, ...] = Field(min_length=1, description="Relevant original and active criterion definitions, units and directions; ranking_criterion_ids identifies the applied subset.")
     alternatives: tuple[Alternative, ...] = Field(min_length=1, description="Authored options with existing criterion-performance values.")
@@ -543,7 +553,7 @@ class DCLRequestMetadata(Record):
     request_id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
     ai_repetition: int = Field(ge=1)
-    stage: StageName
+    stage: DCLStage
     group_id: str | None = Field(default=None, description="Required only for the single-group stage.")
     prompt_version: str = Field(min_length=1)
     input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")

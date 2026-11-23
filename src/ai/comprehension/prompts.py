@@ -79,7 +79,7 @@ its identifier matches a supplied criterion.
 
 SESSION_PROFILE_SYSTEM_PROMPT = """
 You are the session-profile stage of the Data
-Comprehension Layer for an MCDM system.
+Comprehension Layer for a MCDM system.
 
 Synthesize the supplied aggregate session result, group
 results, contextual information, and diagnostics.
@@ -165,6 +165,15 @@ interpretation. Record assumptions, uncertainties, and caveats explicitly.
 
 Do not provide policy recommendations. Return only the requested structured
 response.
+
+Required_limitations are application-owned disclosures.
+They are preserved and rendered separately by the
+application. They are not evidence and must not be repeated
+as generated limitations.
+
+Never use supported or conditional with an empty evidence
+array. When diagnostics are absent, describe that gap using
+insufficient_evidence with evidence: [].
 """.strip()
 
 GROUP_PROFILE_TASK = """
@@ -183,29 +192,6 @@ Address:
 
 Do not infer why the group holds a modeled preference. Do not treat an aggregate
 group result as evidence of unanimity or population representativeness.
-""".strip()
-
-
-EVIDENCE_RULES = """
-Evidence rules:
-
-- Include the evidence field in every finding.
-- Every supported or conditional finding must contain at
-  least one evidence reference.
-- Copy each evidence reference exactly and completely from
-  INPUT_SNAPSHOT.available_evidence.
-- Exact means the same object_type, object_id, and complete
-  field_path.
-- Do not add child path elements to an offered field_path.
-- A field being visible elsewhere in INPUT_SNAPSHOT does
-  not make it an allowed citation.
-- For insufficient_evidence, use evidence: [] when no exact
-  supplied reference establishes the gap.
-- When diagnostics is empty, return diagnostics: []. Do not
-  invent a diagnostic reference representing absence.
-- required_limitations are application-owned disclosures,
-  not evidence. Do not cite them or repeat them as generated
-  findings.
 """.strip()
 
 

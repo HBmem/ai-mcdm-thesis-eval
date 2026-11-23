@@ -105,7 +105,8 @@
       "enabled": true,
       "repetitions": 1,
       "layers": [
-        "data_comprehension"
+        "data_comprehension",
+        "data_explanation_reporting"
       ],
       "provider": null,
       "model": null,

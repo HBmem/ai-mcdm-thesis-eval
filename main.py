@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from contextlib import ExitStack
 
+from src.ai.reporting.progress import ReportingCallProgress
 from src.experiments.loader import load_experiments
 from src.experiments.progress import (
     AIRepetitionProgress,
@@ -140,6 +141,36 @@ class CLIProgressReporter:
                     )
 
             print(message, file=self.stream, flush=True)
+            return
+
+        if isinstance(event, ReportingCallProgress):
+            position = (
+                f"{event.attempt}/{event.max_attempts}"
+            )
+
+            target = "data_explanation_reporting"
+
+            if event.state == "request_started":
+                message = (
+                    f"  │  │  ├─ {target} "
+                    f"attempt {position} started"
+                )
+            else:
+                message = (
+                    f"  │  │  ├─ {target} "
+                    f"received {event.code}; "
+                    f"retrying in "
+                    f"{event.delay_seconds:.1f}s"
+                )
+
+                if event.limit_source is not None:
+                    message += f" — {event.limit_source}"
+
+            print(
+                message,
+                file=self.stream,
+                flush=True,
+            )
             return
 
         if isinstance(event, PreflightProgress):

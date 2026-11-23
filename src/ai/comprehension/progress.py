@@ -2,12 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
-
-DCLStage = Literal[
-    "session_understanding",
-    "stakeholder_group_profile",
-    "session_profile",
-]
+from src.ai.comprehension.models import DCLStage
 
 
 @dataclass(frozen=True, slots=True)
