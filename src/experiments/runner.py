@@ -2347,20 +2347,20 @@ def execute_experiments(
         for run in ai_runs:
             request = run.experiment.ai
 
-            # unsupported_layers = (
-            #     set(request.layers)
-            #     - IMPLEMENTED_AI_LAYERS
-            # )
+            unsupported_layers = (
+                set(request.layers)
+                - IMPLEMENTED_AI_LAYERS
+            )
 
-            # if unsupported_layers:
-            #     names = ", ".join(
-            #         sorted(unsupported_layers)
-            #     )
+            if unsupported_layers:
+                names = ", ".join(
+                    sorted(unsupported_layers)
+                )
 
-            #     raise ValueError(
-            #         f"{run.key}: requested AI layers "
-            #         f"are not implemented: {names}."
-            #     )
+                raise ValueError(
+                    f"{run.key}: requested AI layers "
+                    f"are not implemented: {names}."
+                )
 
             if (
                 request.provider is not None
@@ -2799,6 +2799,13 @@ def execute_experiments(
                     max_retries=(
                         ai_component.config.max_retries
                     ),
+                    retry_base_seconds=(
+                        ai_component.config.retry_base_seconds
+                    ),
+                    retry_max_wait_seconds=(
+                        ai_component.config.retry_max_wait_seconds
+                    ),
+                    on_progress=emit,
                     session_understanding_limitations=(
                         "Authored scenario information and "
                         "configured model inputs are not "
@@ -3007,7 +3014,7 @@ def execute_experiments(
             manifest["status"] = "partial"
         else:
             manifest["status"] = "completed"
-            
+
         manifest["result_status_counts"] = dict(Counter(
             result.status
             for result in results

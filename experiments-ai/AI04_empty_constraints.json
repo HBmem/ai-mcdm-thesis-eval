@@ -117,9 +117,7 @@
       "enabled": true,
       "repetitions": 1,
       "layers": [
-        "data_comprehension",
-        "data_explanation_reporting",
-        "policy_decision_advisory"
+        "data_comprehension"
       ],
       "provider": null,
       "model": null,

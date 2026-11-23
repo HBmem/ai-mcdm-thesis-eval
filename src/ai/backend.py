@@ -7,10 +7,27 @@ from datetime import datetime, timezone
 from typing import Generic, Literal, TypedDict, TypeVar, Protocol
 
 from openai import OpenAI, APITimeoutError, APIConnectionError, APIError, APIStatusError
-from pydantic import BaseModel, Field, AwareDatetime, ValidationError
+from pydantic import BaseModel, Field, AwareDatetime, ValidationError, JsonValue
 
 from src.ai.config import AIConfig, AIProvider
 from src.ai.models.analysis import Record
+
+
+DIAGNOSTIC_RESPONSE_HEADERS = frozenset({
+    "retry-after",
+    "x-ratelimit-limit",
+    "x-ratelimit-remaining",
+    "x-ratelimit-reset",
+    "x-ratelimit-limit-requests",
+    "x-ratelimit-remaining-requests",
+    "x-ratelimit-reset-requests",
+    "x-ratelimit-limit-tokens",
+    "x-ratelimit-remaining-tokens",
+    "x-ratelimit-reset-tokens",
+    "x-request-id",
+    "request-id",
+    "cf-ray",
+})
 
 
 ResponseT = TypeVar("ResponseT", bound=BaseModel)
@@ -20,6 +37,87 @@ BackendFailurePhase = Literal[
     "parsing",
     "schema",
 ]
+
+
+class ProviderErrorDetails(Record):
+    status_code: int = Field(ge=100, le=599)
+    body: JsonValue | None = None
+    headers: dict[str, str] = Field(default_factory=dict)
+    limit_source: str | None = None
+    request_id: str | None = None
+
+
+def _metadata_headers(
+    body: object,
+) -> dict[str, str]:
+    if not isinstance(body, dict):
+        return {}
+
+    error_data = body.get("error", body)
+    if not isinstance(error_data, dict):
+        return {}
+
+    metadata = error_data.get("metadata")
+    if not isinstance(metadata, dict):
+        return {}
+
+    return _diagnostic_headers(
+        metadata.get("headers")
+    )
+
+
+def _diagnostic_headers(
+    headers: object,
+) -> dict[str, str]:
+    if headers is None or not hasattr(headers, "items"):
+        return {}
+
+    return {
+        str(name).lower(): str(value)
+        for name, value in headers.items()
+        if str(name).lower() in DIAGNOSTIC_RESPONSE_HEADERS
+    }
+
+
+def _limit_source(body: object) -> str | None:
+    if not isinstance(body, dict):
+        return None
+
+    error_data = body.get("error", body)
+    if not isinstance(error_data, dict):
+        return None
+
+    metadata = error_data.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+
+    value = metadata.get("limit_source")
+    return value if isinstance(value, str) else None
+
+
+def provider_error_details(
+    error: APIStatusError,
+) -> ProviderErrorDetails:
+    body = error.body
+
+    headers = {
+        **_metadata_headers(body),
+        **_diagnostic_headers(
+            getattr(error.response, "headers", None)
+        ),
+    }
+
+    return ProviderErrorDetails(
+        status_code=error.status_code,
+        body=body,
+        headers=headers,
+        limit_source=_limit_source(body),
+        request_id=(
+            getattr(error, "request_id", None)
+            or headers.get("x-request-id")
+            or headers.get("request-id")
+        ),
+    )
 
 
 class BackendCallError(RuntimeError):
@@ -32,6 +130,7 @@ class BackendCallError(RuntimeError):
         retryable: bool,
         raw_text: str | None = None,
         receipt: BackendReceipt | None = None,
+        provider_details: ProviderErrorDetails | None = None,
     ) -> None:
         super().__init__(message)
         self.phase = phase
@@ -39,6 +138,7 @@ class BackendCallError(RuntimeError):
         self.retryable = retryable
         self.raw_text = raw_text
         self.receipt = receipt
+        self.provider_details = provider_details
 
 
 class AIMessage(TypedDict):
@@ -120,15 +220,33 @@ class OpenAICompatibleBackend:
             ) from None
 
         except APIStatusError as error:
+            body = error.body
             status_code = error.status_code
 
-            # Retry transient provider failures. Authentication,
-            # permission, and invalid-request errors will not improve
-            # by repeating the same request.
             retryable = (
                 status_code in {408, 409, 429}
                 or status_code >= 500
             )
+
+            response_headers = {
+                **_metadata_headers(body),
+                **_diagnostic_headers(
+                    getattr(error.response, "headers", None)
+                ),
+            }
+
+            provider_details = ProviderErrorDetails(
+                status_code=status_code,
+                body=body,
+                headers=response_headers,
+                limit_source=_limit_source(body),
+                request_id=(
+                    getattr(error, "request_id", None)
+                    or response_headers.get("x-request-id")
+                    or response_headers.get("request-id")
+                ),
+            )
+            details = provider_error_details(error)
 
             raise BackendCallError(
                 phase="provider",
@@ -138,6 +256,7 @@ class OpenAICompatibleBackend:
                     f"with status {status_code}."
                 ),
                 retryable=retryable,
+                provider_details=details,
             ) from None
 
         except APIError:

@@ -186,6 +186,29 @@ group result as evidence of unanimity or population representativeness.
 """.strip()
 
 
+EVIDENCE_RULES = """
+Evidence rules:
+
+- Include the evidence field in every finding.
+- Every supported or conditional finding must contain at
+  least one evidence reference.
+- Copy each evidence reference exactly and completely from
+  INPUT_SNAPSHOT.available_evidence.
+- Exact means the same object_type, object_id, and complete
+  field_path.
+- Do not add child path elements to an offered field_path.
+- A field being visible elsewhere in INPUT_SNAPSHOT does
+  not make it an allowed citation.
+- For insufficient_evidence, use evidence: [] when no exact
+  supplied reference establishes the gap.
+- When diagnostics is empty, return diagnostics: []. Do not
+  invent a diagnostic reference representing absence.
+- required_limitations are application-owned disclosures,
+  not evidence. Do not cite them or repeat them as generated
+  findings.
+""".strip()
+
+
 def build_session_understanding_messages(
     snapshot: SessionUnderstandingInput,
 ) -> tuple[PromptMessage, ...]:

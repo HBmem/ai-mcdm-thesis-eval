@@ -13,6 +13,7 @@ from src.ai.backend import (
 )
 from src.ai.config import AIConfig
 from src.ai.preflight import PreflightRecord, check_model_access
+from src.ai.progress import PreflightProgressCallback
 
 
 @dataclass(frozen=True)
@@ -36,11 +37,12 @@ def create_client(config: AIConfig) -> OpenAI:
 @contextmanager
 def build_ai_component(
     config: AIConfig,
+    on_progress: PreflightProgressCallback | None = None,
 ) -> Generator[AIComponent]:
     client = create_client(config)
 
     try:
-        preflight = check_model_access(config, client)
+        preflight = check_model_access(config, client, on_progress)
 
         backend = OpenAICompatibleBackend(
             config=config,

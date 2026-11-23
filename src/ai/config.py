@@ -1,13 +1,14 @@
 # src/ai/config.py
 from __future__ import annotations
 
+import math
 import os
+
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Self
 from urllib.parse import urlsplit
-
 from dotenv import load_dotenv
 
 
@@ -42,6 +43,56 @@ PROVIDERS = {
 }
 
 
+def _read_positive_float(
+    name: str,
+    default: float,
+) -> float:
+    raw = os.environ.get(name)
+
+    if raw is None or not raw.strip():
+        return default
+
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a number.") from None
+
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(
+            f"{name} must be a finite positive number."
+        )
+
+    return value
+
+
+def _read_int_between(
+    name: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    raw = os.environ.get(name)
+
+    if raw is None or not raw.strip():
+        return default
+
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(
+            f"{name} must be an integer."
+        ) from None
+
+    if not minimum <= value <= maximum:
+        raise ValueError(
+            f"{name} must be between "
+            f"{minimum} and {maximum}."
+        )
+
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class AIConfig:
     provider: AIProvider
@@ -50,6 +101,8 @@ class AIConfig:
     api_key: str = field(repr=False)
     timeout: float = 120.0
     max_retries: int = 2
+    retry_base_seconds: float = 1.0
+    retry_max_wait_seconds: float = 90.0
     app_url: str | None = None
     app_name: str | None = None
 
@@ -99,6 +152,24 @@ class AIConfig:
             ).strip(),
             "app_url": os.environ.get("AI_APP_URL", "").strip() or None,
             "app_name": os.environ.get("AI_APP_NAME", "").strip() or None,
+            "timeout": _read_positive_float(
+                "AI_TIMEOUT_SECONDS",
+                120.0
+            ),
+            "max_retries": _read_int_between(
+                "AI_MAX_RETRIES",
+                2,
+                minimum=0,
+                maximum=2,
+            ),
+            "retry_base_seconds": _read_positive_float(
+                "AI_RETRY_BASE_SECONDS",
+                1.0,
+            ),
+            "retry_max_wait_seconds": _read_positive_float(
+                "AI_RETRY_MAX_WAIT_SECONDS",
+                90.0,
+            ),
         }
 
         missing = [
@@ -126,6 +197,8 @@ class AIConfig:
             "base_url": self.base_url,
             "timeout": self.timeout,
             "max_retries": self.max_retries,
+            "retry_base_seconds": self.retry_base_seconds,
+            "retry_max_wait_seconds": self.retry_max_wait_seconds,
         }
 
     def __post_init__(self) -> None:
@@ -150,10 +223,30 @@ class AIConfig:
         ):
             raise ValueError("Invalid AI endpoint configuration.")
 
-        if self.timeout <= 0:
-            raise ValueError("AI timeout must be positive.")
-
         if not 0 <= self.max_retries <= 2:
             raise ValueError(
                 "AI retries must be between zero and two."
+            )
+
+        if not math.isfinite(self.timeout) or self.timeout <= 0:
+            raise ValueError(
+                "AI timeout must be a finite positive number."
+            )
+
+        if (
+            not math.isfinite(self.retry_base_seconds)
+            or self.retry_base_seconds <= 0
+        ):
+            raise ValueError(
+                "AI retry base seconds must be a finite "
+                "positive number."
+            )
+
+        if (
+            not math.isfinite(self.retry_max_wait_seconds)
+            or self.retry_max_wait_seconds <= 0
+        ):
+            raise ValueError(
+                "AI retry maximum wait must be a finite "
+                "positive number."
             )

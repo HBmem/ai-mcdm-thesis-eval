@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import time
 from typing import Generic, TypeVar
 from uuid import uuid4, uuid5, NAMESPACE_URL
 
@@ -23,6 +24,7 @@ from src.ai.comprehension.models import (
     PromptMessage,
     StoredInterpretation,
 )
+from src.ai.comprehension.progress import DCLCallProgress, DCLProgressCallback
 from src.ai.comprehension.prompts import (
     SESSION_PROFILE_PROMPT_VERSION,
     SESSION_UNDERSTANDING_PROMPT_VERSION,
@@ -34,6 +36,7 @@ from src.ai.comprehension.prompts import (
 from src.ai.comprehension.serialization import hash_input_snapshot
 from src.ai.comprehension.validation import materialize_validated_findings, validate_available_evidence, validate_response_evidence
 from src.ai.models.analysis import Record
+from src.ai.retry import choose_retry_delay
 
 
 ResponseT = TypeVar("ResponseT", bound=Record)
@@ -120,9 +123,21 @@ def run_dcl_stage(
     messages: tuple[PromptMessage, ...],
     response_model: type[ResponseT],
     max_retries: int,
+    retry_base_seconds: float,
+    retry_max_wait_seconds: float,
+    on_progress: DCLProgressCallback | None = None,
 ) -> DCLStageOutcome[ResponseT]:
     if max_retries < 0:
         raise ValueError("Retries must be >= 0.")
+    if retry_base_seconds <= 0:
+        raise ValueError("Retry base seconds must be positive.")
+
+    if retry_max_wait_seconds <= 0:
+        raise ValueError("Retry maximum wait must be positive.")
+
+    def emit(event: DCLCallProgress) -> None:
+        if on_progress is not None:
+            on_progress(event)
 
     input_issues = validate_available_evidence(
         input_snapshot
@@ -174,6 +189,14 @@ def run_dcl_stage(
     )
 
     for attempt in range(1, max_retries + 2):
+        emit(DCLCallProgress(
+            stage=request.stage,
+            group_id=request.group_id,
+            attempt=attempt,
+            max_attempts=max_retries + 1,
+            state="request_started",
+        ))
+
         started_at = datetime.now(timezone.utc)
 
         try:
@@ -182,6 +205,22 @@ def run_dcl_stage(
                 response_model=response_model,
             )
         except BackendCallError as error:
+            can_retry = (
+                error.retryable
+                and attempt <= max_retries
+            )
+
+            retry = (
+                choose_retry_delay(
+                    attempt=attempt,
+                    provider_details=error.provider_details,
+                    base_seconds=retry_base_seconds,
+                    max_wait_seconds=retry_max_wait_seconds,
+                )
+                if can_retry
+                else None
+            )
+
             calls.append(
                 DCLCallRecord(
                     call_id=uuid4().hex,
@@ -198,18 +237,36 @@ def run_dcl_stage(
                     error=DCLCallError(
                         phase=error.phase,
                         code=error.code,
-                        message=str(error)
-                    )
+                        message=str(error),
+                        provider_details=error.provider_details,
+                    ),
+                    retry=retry,
                 )
             )
 
-            if not error.retryable or attempt > max_retries:
+            if retry is None:
                 return DCLStageOutcome(
                     generation=None,
                     calls=tuple(calls),
                     findings=(),
                 )
 
+            emit(DCLCallProgress(
+                stage=request.stage,
+                group_id=request.group_id,
+                attempt=attempt,
+                max_attempts=max_retries + 1,
+                state="retry_wait",
+                delay_seconds=retry.delay_seconds,
+                code=error.code,
+                limit_source=(
+                    error.provider_details.limit_source
+                    if error.provider_details is not None
+                    else None
+                ),
+            ))
+
+            time.sleep(retry.delay_seconds)
             continue
 
         reference_validation = validate_response_evidence(
@@ -218,6 +275,18 @@ def run_dcl_stage(
         )
 
         if not reference_validation.valid:
+            can_retry = attempt <= max_retries
+
+            retry = (
+                choose_retry_delay(
+                    attempt=attempt,
+                    provider_details=None,
+                    base_seconds=retry_base_seconds,
+                    max_wait_seconds=retry_max_wait_seconds,
+                )
+                if can_retry
+                else None
+            )
             calls.append(
                 DCLCallRecord(
                     call_id=uuid4().hex,
@@ -245,6 +314,7 @@ def run_dcl_stage(
                         ),
                         issues=reference_validation.issues,
                     ),
+                    retry=retry,
                 )
             )
 
@@ -255,6 +325,25 @@ def run_dcl_stage(
                     findings=(),
                 )
 
+            if retry is None:
+                return DCLStageOutcome(
+                    generation=None,
+                    calls=tuple(calls),
+                    findings=(),
+                )
+
+            emit(DCLCallProgress(
+                stage=request.stage,
+                group_id=request.group_id,
+                attempt=attempt,
+                max_attempts=max_retries + 1,
+                state="retry_wait",
+                delay_seconds=retry.delay_seconds,
+                code="invalid_evidence_references",
+                limit_source=None,
+            ))
+
+            time.sleep(retry.delay_seconds)
             continue
 
         findings = materialize_validated_findings(
@@ -294,6 +383,9 @@ def run_session_understanding_stage(
     request: DCLRequestMetadata,
     input_snapshot: SessionUnderstandingInput,
     max_retries: int,
+    retry_base_seconds: float,
+    retry_max_wait_seconds: float,
+    on_progress: DCLProgressCallback | None = None,
 ) -> DCLStageOutcome[
     SessionUnderstandingResponse
 ]:
@@ -339,6 +431,9 @@ def run_session_understanding_stage(
             SessionUnderstandingResponse
         ),
         max_retries=max_retries,
+        retry_base_seconds=retry_base_seconds,
+        retry_max_wait_seconds=retry_max_wait_seconds,
+        on_progress=on_progress,
     )
 
 
@@ -415,6 +510,9 @@ def run_group_profile_stage(
     request: DCLRequestMetadata,
     input_snapshot: GroupProfileInput,
     max_retries: int,
+    retry_base_seconds: float,
+    retry_max_wait_seconds: float,
+    on_progress: DCLProgressCallback | None = None,
 ) -> DCLStageOutcome[GroupProfileResponse]:
     if request.stage != "stakeholder_group_profile":
         raise ValueError("Group-profile execution requires group-profile request metadata.")
@@ -439,6 +537,9 @@ def run_group_profile_stage(
         messages=messages,
         response_model=GroupProfileResponse,
         max_retries=max_retries,
+        retry_base_seconds=retry_base_seconds,
+        retry_max_wait_seconds=retry_max_wait_seconds,
+        on_progress=on_progress,
     )
 
 
@@ -510,6 +611,9 @@ def run_session_profile_stage(
     request: DCLRequestMetadata,
     input_snapshot: SessionProfileInput,
     max_retries: int,
+    retry_base_seconds: float,
+    retry_max_wait_seconds: float,
+    on_progress: DCLProgressCallback | None = None,
 ) -> DCLStageOutcome[SessionProfileResponse]:
     if request.stage != "session_profile":
         raise ValueError(
@@ -551,6 +655,9 @@ def run_session_profile_stage(
         messages=messages,
         response_model=SessionProfileResponse,
         max_retries=max_retries,
+        retry_base_seconds=retry_base_seconds,
+        retry_max_wait_seconds=retry_max_wait_seconds,
+        on_progress=on_progress,
     )
 
 def build_session_profile_artifact(

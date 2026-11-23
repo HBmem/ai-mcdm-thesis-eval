@@ -31,7 +31,7 @@ from typing import Annotated, Generic, Literal, Self, TypeVar
 from pydantic import AwareDatetime, Field, JsonValue, model_validator
 
 from src.ai.models.analysis import Record
-from src.ai.backend import BackendReceipt
+from src.ai.backend import BackendReceipt, ProviderErrorDetails
 from src.mcdm.models.computation import (
     EntityCalculation, EntityMetadata, RankingResult, WeightResult,
 )
@@ -60,6 +60,11 @@ EvidenceObjectType = Literal[
     "assumption",
     "constraint",
     "processing",
+]
+RetryDelaySource = Literal[
+    "retry_after",
+    "rate_limit_reset",
+    "exponential_backoff",
 ]
 
 
@@ -298,7 +303,15 @@ class InterpretationDraft(Record):
 
     statement: str = Field(min_length=1, description="Concise evidence-grounded explanation; do not invent results or motivations.")
     assessment: ModelAssessment = Field(description="Model-proposed support level, not the application's verdict.")
-    evidence: tuple[EvidenceReference, ...] = Field(default=(), description="Only aliases supplied in this request; never prior AI prose as independent evidence.")
+    evidence: tuple[EvidenceReference, ...] = Field(
+        description=(
+            "Required for every finding. Supported or "
+            "conditional findings require at least one exact "
+            "reference copied from available_evidence. "
+            "Insufficient-evidence findings may use an "
+            "empty array."
+        ),
+    )
     assumptions: tuple[str, ...] = Field(description="Additional conditions adopted by this interpretation, not established facts; empty if none.")
     uncertainties: tuple[Uncertainty, ...] = Field(description="Specific unresolved information or analytical uncertainty; empty if none.")
     caveats: tuple[str, ...] = Field(description="Restrictions on interpretation or generalization; empty only when none apply.")
@@ -590,6 +603,11 @@ class PromptMessage(Record):
     content: str = Field(description="Exact sent text, subject to the application's privacy policy.")
 
 
+class RetryDecision(Record):
+    delay_seconds: float = Field(ge=0)
+    source: RetryDelaySource
+
+
 class DCLCallError(Record):
     """A failure belonging to one attempt; it must remain associated with that call."""
 
@@ -597,6 +615,7 @@ class DCLCallError(Record):
     code: str = Field(min_length=1)
     message: str = Field(min_length=1, description="Sanitized explanation; never include credentials/provider headers.")
     issues: tuple[ValidationIssue, ...] = ()
+    provider_details: ProviderErrorDetails | None = None
 
 
 class DCLCallRecord(Record):
@@ -621,6 +640,7 @@ class DCLCallRecord(Record):
     parsed_response: DCLStageResponse | None = None
     error: DCLCallError | None = None
     redacted: bool = False
+    retry: RetryDecision | None = None
 
     @model_validator(mode="after")
     def validate_call(self) -> Self:
@@ -654,6 +674,10 @@ class DCLCallRecord(Record):
         if self.status == "failed" and self.parsed_response is not None:
             raise ValueError(
                 "A failed call cannot contain a parsed response."
+            )
+        if self.status == "completed" and self.retry is not None:
+            raise ValueError(
+                "A completed call cannot schedule a retry."
             )
         return self
 

@@ -17,6 +17,7 @@ from src.ai.comprehension.pipeline import (
     run_group_profile_stage,
 )
 from src.ai.comprehension.requests import create_session_profile_request, create_session_understanding_request, create_group_profile_request
+from src.ai.comprehension.progress import DCLProgressCallback
 from src.experiments.results import RunResult
 
 
@@ -322,6 +323,9 @@ def run_dcl_repetition_for_result(
     result: RunResult,
     ai_repetition: int,
     max_retries: int,
+    retry_base_seconds: float,
+    retry_max_wait_seconds: float,
+    on_progress: DCLProgressCallback | None = None,
     diagnostics_by_group: dict[
         str,
         tuple[DiagnosticContext, ...],
@@ -353,6 +357,9 @@ def run_dcl_repetition_for_result(
             result=result,
             ai_repetition=ai_repetition,
             max_retries=max_retries,
+            retry_base_seconds=retry_base_seconds,
+            retry_max_wait_seconds=retry_max_wait_seconds,
+            on_progress=on_progress,
             required_limitations=(
                 session_understanding_limitations
             ),
@@ -376,6 +383,9 @@ def run_dcl_repetition_for_result(
         result=result,
         ai_repetition=ai_repetition,
         max_retries=max_retries,
+        retry_base_seconds=retry_base_seconds,
+        retry_max_wait_seconds=retry_max_wait_seconds,
+        on_progress=on_progress,
         diagnostics_by_group=(
             diagnostics_by_group
         ),
@@ -409,6 +419,9 @@ def run_dcl_repetition_for_result(
         result=result,
         state=intermediate_state,
         max_retries=max_retries,
+        retry_base_seconds=retry_base_seconds,
+        retry_max_wait_seconds=retry_max_wait_seconds,
+        on_progress=on_progress,
         diagnostics=session_diagnostics,
         failed_group_ids=(
             groups.failed_group_ids
@@ -575,6 +588,9 @@ def run_session_understanding_for_result(
     result: RunResult,
     ai_repetition: int,
     max_retries: int,
+    retry_base_seconds: float,
+    retry_max_wait_seconds: float,
+    on_progress: DCLProgressCallback | None = None,
     required_limitations: tuple[str, ...] = (),
     input_origin: Literal[
         "calculated",
@@ -613,6 +629,9 @@ def run_session_understanding_for_result(
             request=request,
             input_snapshot=input_snapshot,
             max_retries=max_retries,
+            retry_base_seconds=retry_base_seconds,
+            retry_max_wait_seconds=retry_max_wait_seconds,
+            on_progress=on_progress,
         )
     )
 
@@ -720,6 +739,9 @@ def run_group_profiles_for_result(
     result: RunResult,
     ai_repetition: int,
     max_retries: int,
+    retry_base_seconds: float,
+    retry_max_wait_seconds: float,
+    on_progress: DCLProgressCallback | None = None,
     diagnostics_by_group: dict[
         str,
         tuple[DiagnosticContext, ...],
@@ -763,6 +785,9 @@ def run_group_profiles_for_result(
             request=request,
             input_snapshot=input_snapshot,
             max_retries=max_retries,
+            retry_base_seconds=retry_base_seconds,
+            retry_max_wait_seconds=retry_max_wait_seconds,
+            on_progress=on_progress,
         )
 
         calls.extend(outcome.calls)
@@ -901,6 +926,9 @@ def run_session_profile_for_result(
     result: RunResult,
     state: DCLRunState,
     max_retries: int,
+    retry_base_seconds: float,
+    retry_max_wait_seconds: float,
+    on_progress: DCLProgressCallback | None = None,
     diagnostics: tuple[
         DiagnosticContext, ...
     ] = (),
@@ -984,6 +1012,9 @@ def run_session_profile_for_result(
         request=request,
         input_snapshot=input_snapshot,
         max_retries=max_retries,
+        retry_base_seconds=retry_base_seconds,
+        retry_max_wait_seconds=retry_max_wait_seconds,
+        on_progress=on_progress,
     )
 
     artifact = None

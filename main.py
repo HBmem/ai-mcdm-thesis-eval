@@ -18,6 +18,8 @@ from src.experiments.storage import ArtifactWriteError
 from src.ai.config import AIConfig
 from src.ai.component import build_ai_component
 from src.ai.preflight import PreflightError
+from src.ai.progress import PreflightProgress
+from src.ai.comprehension.progress import DCLCallProgress
 
 
 ROOT = Path(__file__).resolve().parent
@@ -107,6 +109,66 @@ class CLIProgressReporter:
                 message += f" — {event.detail}"
 
             print(message, file=self.stream, flush=True)
+            return
+
+        if isinstance(event, DCLCallProgress):
+            target = event.stage
+
+            if event.group_id is not None:
+                target += f"[{event.group_id}]"
+
+            position = (
+                f"{event.attempt}/{event.max_attempts}"
+            )
+
+            if event.state == "request_started":
+                message = (
+                    f"  │  │  ├─ {target} "
+                    f"attempt {position} started"
+                )
+            else:
+                message = (
+                    f"  │  │  ├─ {target} "
+                    f"received {event.code}; "
+                    f"retrying in "
+                    f"{event.delay_seconds:.1f}s"
+                )
+
+                if event.limit_source is not None:
+                    message += (
+                        f" — {event.limit_source}"
+                    )
+
+            print(message, file=self.stream, flush=True)
+            return
+
+        if isinstance(event, PreflightProgress):
+            position = (
+                f"{event.attempt}/{event.max_attempts}"
+            )
+
+            if event.state == "request_started":
+                message = (
+                    f"  ├─ preflight attempt "
+                    f"{position} started"
+                )
+            else:
+                message = (
+                    f"  ├─ preflight received "
+                    f"{event.code}; retrying in "
+                    f"{event.delay_seconds:.1f}s"
+                )
+
+                if event.limit_source is not None:
+                    message += (
+                        f" — {event.limit_source}"
+                    )
+
+            print(
+                message,
+                file=self.stream,
+                flush=True,
+            )
             return
 
         label = (
@@ -200,7 +262,12 @@ def main(argv=None):
             if args.ai:
                 config = AIConfig.from_env(ROOT / ".env")
                 print("Checking AI key and model access...")
-                ai_component = stack.enter_context(build_ai_component(config))
+                ai_component = stack.enter_context(
+                    build_ai_component(
+                        config,
+                        on_progress=reporter,
+                    )
+                )
                 print("AI access check passed.")
 
             batch_directory, results = execute_experiments(

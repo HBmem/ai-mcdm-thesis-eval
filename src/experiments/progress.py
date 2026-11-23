@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
+from src.ai.comprehension.progress import DCLCallProgress
+from src.ai.progress import PreflightProgress
+
 
 StageName = Literal[
     "numerical",
@@ -60,4 +63,6 @@ ProgressEvent: TypeAlias = (
     StageProgress
     | RunProgress
     | AIRepetitionProgress
+    | DCLCallProgress
+    | PreflightProgress
 )
