@@ -6,6 +6,11 @@ import numpy as np
 
 from scipy.stats import kendalltau, rankdata, spearmanr
 
+from src.mcdm.diagnostics import (
+    TIE_ATOL,
+    statistical_ranks,
+)
+
 RI = [0, 0, 0, .58, .90, 1.12, 1.24, 1.32, 1.41, 1.45, 1.49, 1.51, 1.48, 1.56, 1.57, 1.59]
 SAATY = tuple([1 / i for i in range(9, 1, -1)] + list(range(1, 10)))
 DERIVATIONS = {
@@ -16,8 +21,6 @@ DERIVATIONS = {
     "max_eigen": "max_eigen",
     "me": "max_eigen"
 }
-TIE_ATOL = 1e-12
-
 def validate_ratio(value):
     """Validate that a comparison ratio is a finite Saaty-scale value."""
     if isinstance(value, bool) or not isinstance(value, Real) or not np.isfinite(value) or not any (np.isclose(value, x, rtol=0, atol=1e-12) for x in SAATY):
@@ -113,15 +116,19 @@ def topsis(alternatives, criteria, weights):
     scores = np.divide(dw, db + dw, out=np.full(len(x), .5), where=(db + dw) != 0)
     order = sorted(range(len(ids)), key=lambda i: (-scores[i], i))
 
-    # Tolerance groups avoid treating floating-point noise as preference changes.
-    statistical = np.empty(len(ids))
-    start = 0
-    while start < len(order):
-        end = start + 1
-        while end < len(order) and abs(scores[order[start]] - scores[order[end]]) <= TIE_ATOL:
-            end += 1
-        statistical[order[start:end]] = (start + 1 + end) / 2
-        start = end
+    # Shared tolerance semantics prevent experiment comparisons and
+    # diagnostics from disagreeing with the independent TOPSIS reference.
+    statistical = statistical_ranks(
+        {
+            alternative_id: float(score)
+            for alternative_id, score in zip(
+                ids,
+                scores,
+                strict=True,
+            )
+        },
+        tie_atol=TIE_ATOL,
+    )
 
     return {
         "decision_matrix": labeled(x, ids, cids),
@@ -135,7 +142,7 @@ def topsis(alternatives, criteria, weights):
                 "alternative_id": ids[i],
                 "score": float(scores[i]),
                 "rank": rank,
-                "statistical_rank": float(statistical[i]),
+                "statistical_rank": statistical[ids[i]],
                 "distance_best": float(db[i]),
                 "distance_worst": float(dw[i])
             }

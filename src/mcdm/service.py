@@ -88,6 +88,128 @@ def validate_weight_vector(
 
     return weights
 
+
+def build_ranking_weighting(
+    weighting: WeightResult,
+    *,
+    full_criterion_ids: list[str] | tuple[str, ...],
+    ranking_criterion_ids: list[str] | tuple[str, ...],
+    override: dict[str, float] | None = None,
+) -> tuple[
+    WeightResult,
+    dict[str, float],
+    Literal[
+        "original",
+        "restricted_and_renormalized",
+        "explicit",
+    ],
+]:
+    full_ids = list(full_criterion_ids)
+    selected_ids = list(ranking_criterion_ids)
+
+    if (
+        not full_ids
+        or len(full_ids) != len(set(full_ids))
+    ):
+        raise ValueError(
+            "Full criterion IDs must be nonempty and unique."
+        )
+
+    if (
+        not selected_ids
+        or len(selected_ids) != len(set(selected_ids))
+        or not set(selected_ids) <= set(full_ids)
+    ):
+        raise ValueError(
+            "Ranking criteria must be a nonempty, unique "
+            "subset of the full criteria."
+        )
+
+    items = weighting.criterion_weights
+    by_id = {
+        item.criterion_id: item
+        for item in items
+    }
+
+    if (
+        len(by_id) != len(items)
+        or set(by_id) != set(full_ids)
+    ):
+        raise ValueError(
+            "Original weights must cover every full criterion "
+            "exactly once."
+        )
+
+    original = validate_weight_vector(
+        [by_id[cid].weight for cid in full_ids],
+        expected_count=len(full_ids),
+        label="Original weighting",
+    )
+
+    original_by_id = dict(zip(full_ids, original))
+
+    if override is not None:
+        if (
+            not isinstance(override, dict)
+            or set(override) != set(selected_ids)
+        ):
+            raise ValueError(
+                "Explicit ranking weights must cover exactly "
+                "the selected criteria."
+            )
+
+        applied = validate_weight_vector(
+            [override[cid] for cid in selected_ids],
+            expected_count=len(selected_ids),
+            label="Explicit ranking weights",
+        )
+
+        source = "explicit"
+
+    else:
+        applied = np.asarray([
+            original_by_id[cid]
+            for cid in selected_ids
+        ])
+
+        if set(selected_ids) != set(full_ids):
+            retained_mass = float(applied.sum())
+
+            if retained_mass <= 0:
+                raise ValueError(
+                    "Retained criteria have no positive weight."
+                )
+
+            applied = applied / retained_mass
+            source = "restricted_and_renormalized"
+
+        else:
+            # Reordering is allowed; repairing the total is not.
+            source = "original"
+
+    ranking_weighting = weighting.model_copy(deep=True)
+
+    ranking_weighting.criterion_weights = [
+        CriterionWeight(
+            criterion_id=cid,
+            criterion_name=by_id[cid].criterion_name,
+            weight=float(value),
+        )
+        for cid, value in zip(
+            selected_ids,
+            applied,
+            strict=True,
+        )
+    ]
+
+    applied_by_id = dict(zip(
+        selected_ids,
+        applied.tolist(),
+    ))
+
+    return ranking_weighting, applied_by_id, source
+
+
 class MCDMService:
     """
     Performs deterministic weight generation and ranking calculations for a DecisionSession.
@@ -292,7 +414,6 @@ class MCDMService:
 
         represented_groups = []
         group_matrices = []
-        configured_powers = []
 
         for group in session.stakeholder_groups:
             members = [
@@ -312,32 +433,27 @@ class MCDMService:
                     config=config,
                 )
             )
-            configured_powers.append(group.voting_power)
 
         if not group_matrices:
             raise ValueError("No represented stakeholder groups.")
 
-        powers = np.asarray(configured_powers, dtype=float)
-        effective_powers = powers / powers.sum()
-
-        matrix = np.exp(
-            np.tensordot(
-                effective_powers,
-                np.log(np.stack(group_matrices)),
-                axes=1,
-            )
-        )
-
-        return SessionAggregationResult(
-            matrix=matrix,
-            effective_voting_powers={
-                group.id: float(power)
-                for group, power in zip(
+        return cls.aggregate_group_matrices(
+            group_ids=tuple(
+                group.id for group in represented_groups
+            ),
+            group_matrices={
+                group.id: matrix
+                for group, matrix in zip(
                     represented_groups,
-                    effective_powers,
+                    group_matrices,
                     strict=True,
                 )
             },
+            voting_powers={
+                group.id: float(group.voting_power)
+                for group in represented_groups
+            },
+            config=config,
         )
 
 
@@ -742,4 +858,176 @@ class MCDMService:
         return RankingResult(
             rankings=rankings
         )
-    
+
+
+    @classmethod
+    def aggregate_group_matrices(
+        cls,
+        *,
+        group_ids: tuple[str, ...],
+        group_matrices: dict[str, np.ndarray],
+        voting_powers: dict[str, float],
+        config: AggregationMethodConfig,
+    ) -> SessionAggregationResult:
+        """Aggregate represented group matrices in canonical order."""
+
+        if config.empty_group_policy != EmptyGroupPolicy.EXCLUDED:
+            raise NotImplementedError(
+                "Only exclusion of empty groups is implemented."
+            )
+
+        if (
+            config.group_power_normalization
+            != GroupPowerMethod.REPRESENTED_GROUPS
+        ):
+            raise NotImplementedError(
+                "Only represented-group power normalization is implemented."
+            )
+
+        if (
+            config.between_groups
+            != MeanMethod.WEIGHTED_GEOMETRIC_MEAN
+        ):
+            raise NotImplementedError(
+                f"Between-group aggregation {config.between_groups!r} "
+                "is not implemented."
+            )
+
+        if not group_ids:
+            raise ValueError(
+                "At least one represented group is required."
+            )
+
+        if len(group_ids) != len(set(group_ids)):
+            raise ValueError(
+                "Represented group IDs must be unique."
+            )
+
+        if set(group_matrices) != set(group_ids):
+            raise ValueError(
+                "Group matrices must cover represented groups exactly."
+            )
+
+        if set(voting_powers) != set(group_ids):
+            raise ValueError(
+                "Voting powers must cover represented groups exactly."
+            )
+
+        matrices = tuple(
+            np.asarray(
+                group_matrices[group_id],
+                dtype=float,
+            )
+            for group_id in group_ids
+        )
+
+        matrix_shape = matrices[0].shape
+
+        if (
+            matrices[0].ndim != 2
+            or matrix_shape[0] != matrix_shape[1]
+            or matrix_shape[0] < 2
+        ):
+            raise ValueError(
+                "Group matrices must be square and at least 2x2."
+            )
+
+        for matrix in matrices:
+            if (
+                matrix.ndim != 2
+                or matrix.shape[0] != matrix.shape[1]
+                or matrix.shape != matrix_shape
+                or matrix.shape[0] < 2
+            ):
+                raise ValueError(
+                    "Group matrices must have the same square shape "
+                    "and be at least 2x2."
+                )
+
+            if (
+                not np.all(np.isfinite(matrix))
+                or np.any(matrix <= 0)
+            ):
+                raise ValueError(
+                    "Group matrices must contain only finite, "
+                    "strictly positive values."
+                )
+
+            if not np.allclose(
+                np.diag(matrix),
+                1.0,
+                rtol=0.0,
+                atol=ROUNDOFF_TOLERANCE,
+            ):
+                raise ValueError(
+                    "Group matrix diagonal entries must be 1."
+                )
+
+            if not np.allclose(
+                np.log(matrix) + np.log(matrix.T),
+                0.0,
+                rtol=0.0,
+                atol=1e-9,
+            ):
+                raise ValueError(
+                    "Group matrices must be reciprocal."
+                )
+
+        ordered_powers = [
+            voting_powers[group_id]
+            for group_id in group_ids
+        ]
+        if any(
+            isinstance(power, (bool, np.bool_))
+            for power in ordered_powers
+        ):
+            raise ValueError(
+                "Voting powers must be real numeric values, "
+                "not booleans."
+            )
+
+        try:
+            powers = np.asarray(
+                ordered_powers,
+                dtype=float,
+            )
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError(
+                "Voting powers must form a numeric vector."
+            ) from error
+
+        if (
+            powers.shape != (len(group_ids),)
+            or not np.all(np.isfinite(powers))
+            or np.any(powers < 0)
+        ):
+            raise ValueError(
+                "Voting powers must be finite and nonnegative."
+            )
+
+        total_power = float(powers.sum())
+        if not np.isfinite(total_power) or total_power <= 0:
+            raise ValueError(
+                "Total voting power must be finite and positive."
+            )
+
+        effective_powers = powers / total_power
+        matrix = np.exp(
+            np.tensordot(
+                effective_powers,
+                np.log(np.stack(matrices)),
+                axes=1,
+            )
+        )
+
+        return SessionAggregationResult(
+            matrix=matrix,
+            effective_voting_powers={
+                group_id: float(power)
+                for group_id, power in zip(
+                    group_ids,
+                    effective_powers,
+                    strict=True,
+                )
+            },
+        )

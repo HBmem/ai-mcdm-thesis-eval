@@ -23,6 +23,7 @@ from typing import Literal
 
 from src.ai.comprehension.orchestration import run_dcl_repetition_for_result
 from src.ai.comprehension.storage import save_dcl_repetition_outcome
+from src.ai.diagnostics import build_session_diagnostic_contexts
 from src.ai.reporting.orchestration import run_reporting_for_dcl_repetition
 from src.ai.reporting.storage import save_data_explanation_reporting_outcome
 from src.common.time import timestamp
@@ -42,7 +43,7 @@ from src.mcdm.enums import (
     WeightingMethod, RankingMethod, MeanMethod, GroupPowerMethod,
     EmptyGroupPolicy, OnExceedancePolicy, PairwisePreference,
 )
-from src.mcdm.service import MCDMService, validate_weight_vector
+from src.mcdm.service import MCDMService, validate_weight_vector, build_ranking_weighting
 from src.mcdm.models.computation import EntityCalculation, CriterionWeight, StageError, EntityMetadata, WeightingSource
 from src.mcdm.models.domain import Alternative, CriterionValue
 from src.mcdm.reference import DERIVATIONS
@@ -672,118 +673,6 @@ def _create_run_result(run: PreparedRun) -> RunResult:
         },
     )
 
-def _build_ranking_weighting(
-    weighting,
-    *,
-    full_criterion_ids,
-    ranking_criterion_ids,
-    override=None,
-):
-    full_ids = list(full_criterion_ids)
-    selected_ids = list(ranking_criterion_ids)
-
-    if (
-        not full_ids
-        or len(full_ids) != len(set(full_ids))
-    ):
-        raise ValueError(
-            "Full criterion IDs must be nonempty and unique."
-        )
-
-    if (
-        not selected_ids
-        or len(selected_ids) != len(set(selected_ids))
-        or not set(selected_ids) <= set(full_ids)
-    ):
-        raise ValueError(
-            "Ranking criteria must be a nonempty, unique "
-            "subset of the full criteria."
-        )
-
-    items = weighting.criterion_weights
-    by_id = {
-        item.criterion_id: item
-        for item in items
-    }
-
-    if (
-        len(by_id) != len(items)
-        or set(by_id) != set(full_ids)
-    ):
-        raise ValueError(
-            "Original weights must cover every full criterion "
-            "exactly once."
-        )
-
-    original = validate_weight_vector(
-        [by_id[cid].weight for cid in full_ids],
-        expected_count=len(full_ids),
-        label="Original weighting",
-    )
-
-    original_by_id = dict(zip(full_ids, original))
-
-    if override is not None:
-        if (
-            not isinstance(override, dict)
-            or set(override) != set(selected_ids)
-        ):
-            raise ValueError(
-                "Explicit ranking weights must cover exactly "
-                "the selected criteria."
-            )
-
-        applied = validate_weight_vector(
-            [override[cid] for cid in selected_ids],
-            expected_count=len(selected_ids),
-            label="Explicit ranking weights",
-        )
-
-        source = "explicit"
-
-    else:
-        applied = np.asarray([
-            original_by_id[cid]
-            for cid in selected_ids
-        ])
-
-        if set(selected_ids) != set(full_ids):
-            retained_mass = float(applied.sum())
-
-            if retained_mass <= 0:
-                raise ValueError(
-                    "Retained criteria have no positive weight."
-                )
-
-            applied = applied / retained_mass
-            source = "restricted_and_renormalized"
-
-        else:
-            # Reordering is allowed; repairing the total is not.
-            source = "original"
-
-    ranking_weighting = weighting.model_copy(deep=True)
-
-    ranking_weighting.criterion_weights = [
-        CriterionWeight(
-            criterion_id=cid,
-            criterion_name=by_id[cid].criterion_name,
-            weight=float(value),
-        )
-        for cid, value in zip(
-            selected_ids,
-            applied,
-            strict=True,
-        )
-    ]
-
-    applied_by_id = dict(zip(
-        selected_ids,
-        applied.tolist(),
-    ))
-
-    return ranking_weighting, applied_by_id, source
-
 def provenance(experiment, inputs):
     notes = []
 
@@ -1042,7 +931,7 @@ def calculate_entity(
             ranking_weighting,
             applied_weights,
             weight_source,
-        ) = _build_ranking_weighting(
+        ) = build_ranking_weighting(
             weighting,
             full_criterion_ids=full_ids,
             ranking_criterion_ids=selected_ids,
@@ -2807,6 +2696,9 @@ def execute_experiments(
             run_directory = run_artifact_directory(run)
 
             repetition_statuses = []
+            session_diagnostics = (
+                build_session_diagnostic_contexts(result)
+            )
 
             for ai_repetition in range(
                 1,
@@ -2834,6 +2726,9 @@ def execute_experiments(
                         ai_component.config.retry_max_wait_seconds
                     ),
                     on_progress=emit,
+                    session_diagnostics=(
+                        session_diagnostics
+                    ),
                     session_understanding_limitations=(
                         "Authored scenario information and "
                         "configured model inputs are not "

@@ -3,6 +3,12 @@ import math
 import numpy as np
 from scipy.stats import kendalltau, spearmanr
 
+from src.mcdm.diagnostics import (
+    TIE_ATOL,
+    statistical_ranks,
+    winner_ids,
+)
+
 
 SUPPORTED_METRICS = {
     "weight_delta",
@@ -59,48 +65,6 @@ def _align_ids(current_ids, reference_ids, policy, label):
     }
 
 
-def _statistical_ranks(scores, tie_atol):
-    ordered = sorted(
-        scores,
-        key=lambda alternative_id: (
-            -scores[alternative_id],
-            alternative_id,
-        ),
-    )
-
-    ranks = {}
-    start = 0
-
-    while start < len(ordered):
-        end = start + 1
-        highest_score = scores[ordered[start]]
-
-        while (
-            end < len(ordered)
-            and highest_score - scores[ordered[end]] <= tie_atol
-        ):
-            end += 1
-
-        average_rank = (start + 1 + end) / 2
-
-        for alternative_id in ordered[start:end]:
-            ranks[alternative_id] = average_rank
-
-        start = end
-
-    return ranks
-
-
-def _winner_ids(scores, tie_atol):
-    best_score = max(scores.values())
-
-    return sorted(
-        alternative_id
-        for alternative_id, score in scores.items()
-        if best_score - score <= tie_atol
-    )
-
-
 def compare_results(current, reference, specification):
     identifier = specification.get("id")
 
@@ -127,7 +91,7 @@ def compare_results(current, reference, specification):
             "Comparison metrics must be unique supported names."
         )
 
-    tie_atol = specification.get("tie_atol", 1e-12)
+    tie_atol = specification.get("tie_atol", TIE_ATOL)
 
     if (
         isinstance(tie_atol, bool)
@@ -214,13 +178,13 @@ def compare_results(current, reference, specification):
                 "No common alternatives."
             )
 
-    current_winners = _winner_ids(
+    current_winners = winner_ids(
         current_scores,
-        tie_atol,
+        tie_atol=tie_atol,
     )
-    reference_winners = _winner_ids(
+    reference_winners = winner_ids(
         reference_scores,
-        tie_atol,
+        tie_atol=tie_atol,
     )
 
     if "winner_changed" in requested:
@@ -252,13 +216,13 @@ def compare_results(current, reference, specification):
             current_rank_scores = current_scores
             reference_rank_scores = reference_scores
 
-        current_ranks = _statistical_ranks(
+        current_ranks = statistical_ranks(
             current_rank_scores,
-            tie_atol,
+            tie_atol=tie_atol,
         )
-        reference_ranks = _statistical_ranks(
+        reference_ranks = statistical_ranks(
             reference_rank_scores,
-            tie_atol,
+            tie_atol=tie_atol,
         )
 
         x = np.asarray([
@@ -385,32 +349,21 @@ def comparison_view(result, *, tie_atol, alternative_ids=None):
         or row.alternative_id in alternative_ids
     ]
 
+    scores = {
+        row.alternative_id: float(row.closeness_coefficient)
+        for row in rows
+    }
+    ranks = statistical_ranks(
+        scores,
+        tie_atol=tie_atol,
+    )
     rows = sorted(
         rows,
-        key=lambda row: -row.closeness_coefficient,
+        key=lambda row: (
+            -row.closeness_coefficient,
+            row.alternative_id,
+        ),
     )
-
-    statistical_ranks = {}
-    start = 0
-
-    while start < len(rows):
-        end = start + 1
-
-        while (
-            end < len(rows)
-            and abs(
-                rows[start].closeness_coefficient
-                - rows[end].closeness_coefficient
-            ) <= tie_atol
-        ):
-            end += 1
-
-        average_rank = (start + 1 + end) / 2
-
-        for row in rows[start:end]:
-            statistical_ranks[row.alternative_id] = average_rank
-
-        start = end
 
     return {
         "applied_weights": dict(
@@ -422,7 +375,7 @@ def comparison_view(result, *, tie_atol, alternative_ids=None):
                     "alternative_id": row.alternative_id,
                     "score": row.closeness_coefficient,
                     "rank": index,
-                    "statistical_rank": statistical_ranks[
+                    "statistical_rank": ranks[
                         row.alternative_id
                     ],
                 }
