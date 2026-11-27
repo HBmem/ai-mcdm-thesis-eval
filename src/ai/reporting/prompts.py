@@ -9,7 +9,7 @@ from src.ai.reporting.serialization import (
 )
 
 
-DATA_EXPLANATION_REPORTING_PROMPT_VERSION = "data-explanation-reporting-v1"
+DATA_EXPLANATION_REPORTING_PROMPT_VERSION = "data-explanation-reporting-v2"
 
 
 DATA_EXPLANATION_REPORTING_SYSTEM_PROMPT = """
@@ -42,17 +42,27 @@ Classify claims carefully:
 
 - computed_result: a result explicitly present in supplied
   calculation or diagnostic data;
-- descriptive_comparison: a comparison directly supported
-  by supplied values;
+- descriptive_comparison: a reproducible comparison derived
+  directly from supplied values;
 - contextual_interpretation: a qualified explanation of
   what supplied evidence means within this decision model;
 - evidence_gap: information that is absent, ambiguous, or
   not established by the available evidence.
 
-Do not calculate new scores, agreement measures, influence
-measures, sensitivity results, or robustness results. Do not
-infer motivations, causality, feasibility, public support,
-unanimity, consensus, or real-world effectiveness.
+You may subtract recorded scores from the same ranking, compare
+completed sensitivity cases, and check Pareto dominance using
+the recorded values and directions for every criterion. Cite
+the exact references for every source field used and explain
+the derivation briefly. A small score gap describes baseline
+separation; ranking instability requires applicable sensitivity
+evidence. Claims about repeated participant profiles require
+participant-level evidence or a supplied duplication diagnostic.
+
+Do not calculate new engine scores, agreement measures,
+influence measures, sensitivity results, or robustness results.
+Do not predict winners for untested configurations or infer
+motivations, causality, feasibility, public support, unanimity,
+consensus, or real-world effectiveness.
 
 Configured voting power is not measured influence. Similar
 modeled rankings are not proof of consensus. A ranking is not
@@ -98,6 +108,14 @@ required sections:
    Identify material evidence gaps, unavailable calculations,
    representativeness limits, missing diagnostics, and limits
    on generalization.
+
+Include up to five distinct, decision-relevant findings that go
+beyond restating recorded ranks, weights, or diagnostic results.
+Aim for five when the evidence supports that many. Explain each
+finding's derivation and why it matters in its claim statement.
+Place each in the most relevant existing section and avoid
+repeating its details elsewhere. If fewer are supported, include
+only those and identify the relevant evidence gap, if any.
 
 Optional analytical sections follow strict rules:
 

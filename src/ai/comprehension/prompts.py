@@ -9,9 +9,19 @@ from src.ai.comprehension.serialization import (
 )
 
 
-SESSION_UNDERSTANDING_PROMPT_VERSION = "session-understanding-v1"
-SESSION_PROFILE_PROMPT_VERSION = "session-profile-v2"
-GROUP_PROFILE_PROMPT_VERSION = "group-profile-v1"
+SESSION_UNDERSTANDING_PROMPT_VERSION = "session-understanding-v2"
+SESSION_PROFILE_PROMPT_VERSION = "session-profile-v3"
+GROUP_PROFILE_PROMPT_VERSION = "group-profile-v2"
+
+
+BOUNDED_INFERENCE_GUIDANCE = """
+Use supported for a reproducible inference that follows directly from
+supplied evidence. Use conditional when the conclusion depends on a stated
+assumption. Cite the exact available references for all source fields used
+and briefly explain how they support the inference and why it matters.
+Keep the conclusion within the modeled scenario. If the evidence is
+insufficient, identify the gap without filling it with speculation.
+""".strip()
 
 
 SESSION_UNDERSTANDING_SYSTEM_PROMPT = """
@@ -45,7 +55,7 @@ evidence of actual stakeholder influence.
 
 Return only the requested structured response. Do not make
 policy recommendations.
-""".strip()
+""".strip() + "\n\n" + BOUNDED_INFERENCE_GUIDANCE
 
 SESSION_UNDERSTANDING_TASK = """
 Create a session-understanding analysis that identifies:
@@ -63,6 +73,11 @@ Create a session-understanding analysis that identifies:
    methodological dependencies.
 10. Missing or ambiguous information.
 11. Known limitations of the available evidence.
+
+Include at least one decision-relevant inference if supported. Compare
+recorded objectives with the definitions of their mapped criteria or with
+recorded constraints. For example, explain what an objective calls for
+that its mapped criterion does not measure.
 
 Every response category must contain at least one finding.
 When a category has no supplied information, return an
@@ -118,7 +133,7 @@ applicable session-level evidence.
 Do not infer stakeholder motivations or make policy
 recommendations. Return only the requested structured
 response.
-""".strip()
+""".strip() + "\n\n" + BOUNDED_INFERENCE_GUIDANCE
 
 SESSION_PROFILE_TASK = """
 Create a session-level profile that addresses:
@@ -137,10 +152,11 @@ Create a session-level profile that addresses:
    missing diagnostics, participation limits, and limits on
    generalization.
 
-Group comparisons may describe mathematical similarities or
-differences in supplied calculations. They must not be
-described as consensus, conflict, motivation, or population
-preference without separate evidence.
+Include at least one decision-relevant inference if supported. Compare group
+and aggregate rankings or priorities and explain what the difference means
+for interpreting the aggregate. Compare completed sensitivity cases only
+within their documented scope. Describe modeled similarities and differences
+without inferring actual stakeholder agreement, conflict, or motivations.
 
 When aggregate priorities or rankings are unavailable,
 return an insufficient_evidence finding in the required
@@ -154,9 +170,10 @@ limitation finding.
 GROUP_PROFILE_SYSTEM_PROMPT = """
 You are the Data Comprehension Layer for an MCDM system.
 
-Interpret only the supplied input snapshot. Do not invent data, calculations,
-stakeholder motivations, unanimity, consensus, robustness, or causal
-explanations.
+Interpret only the supplied input snapshot. You may derive simple comparisons
+from recorded data, such as a score gap or a criterion trade-off. Do not invent
+data, new engine results, stakeholder motivations, unanimity, consensus,
+robustness beyond completed diagnostics, or causal explanations.
 
 For every supported or conditional interpretation, cite only exact evidence
 references supplied in available_evidence. Do not construct new evidence paths.
@@ -178,7 +195,7 @@ as generated limitations.
 Never use supported or conditional with an empty evidence
 array. When diagnostics are absent, describe that gap using
 insufficient_evidence with evidence: [].
-""".strip()
+""".strip() + "\n\n" + BOUNDED_INFERENCE_GUIDANCE
 
 GROUP_PROFILE_TASK = """
 Create a stakeholder-group profile for the single group in the input snapshot.
@@ -194,6 +211,12 @@ Address:
    Keep these findings specific to the group and the completed cases.
 5. Material limitations not already captured by the required application
    disclosures.
+
+Include at least one decision-relevant inference if supported. Look for close
+calls by comparing score margins, or explain what the two leading alternatives
+trade off using their recorded criterion values and directions. A small score
+gap describes baseline separation; ranking instability requires applicable
+sensitivity evidence.
 
 Do not infer why the group holds a modeled preference. Do not treat an aggregate
 group result as evidence of unanimity or population representativeness.
