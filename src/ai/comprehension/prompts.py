@@ -10,7 +10,7 @@ from src.ai.comprehension.serialization import (
 
 
 SESSION_UNDERSTANDING_PROMPT_VERSION = "session-understanding-v1"
-SESSION_PROFILE_PROMPT_VERSION = "session-profile-v1"
+SESSION_PROFILE_PROMPT_VERSION = "session-profile-v2"
 GROUP_PROFILE_PROMPT_VERSION = "group-profile-v1"
 
 
@@ -110,6 +110,10 @@ Discuss agreement, influence, or robustness only when an
 applicable diagnostic is supplied. Otherwise leave the
 corresponding response array empty and describe the evidence
 gap in limitations.
+Keep each diagnostic conclusion scoped to its entity_ids.
+A diagnostic about a single group supports conclusions
+about that group only. Aggregate conclusions require
+applicable session-level evidence.
 
 Do not infer stakeholder motivations or make policy
 recommendations. Return only the requested structured

@@ -462,12 +462,24 @@ class SessionProfileInput(DCLInput):
     stage: Literal["session_profile"] = "session_profile"
     groups: tuple[GroupContext, ...] = Field(min_length=1)
     calculation: SessionCalculationView | None = Field(description="Aggregate numerical result; None requires an evidence-gap explanation.")
-    diagnostics: tuple[DiagnosticContext, ...] = Field(default=(), description="Actual cross-group, agreement, influence or robustness analyses.")
+    diagnostics: tuple[DiagnosticContext, ...] = Field(default=(), description="Session diagnostics and original group diagnostics cited by earlier findings.")
 
     @model_validator(mode="after")
     def validate_groups(self) -> Self:
         if len({g.group.id for g in self.groups}) != len(self.groups):
             raise ValueError("Session profile group identifiers must be unique.")
+        return self
+
+    @model_validator(mode="after")
+    def validate_prior_evidence(self) -> Self:
+        available = {reference.identity() for reference in self.available_evidence}
+        for prior in self.prior_interpretations:
+            for reference in prior.draft.evidence:
+                if reference.identity() not in available:
+                    raise ValueError(
+                        f"Prior finding {prior.finding_id!r} cites evidence unavailable "
+                        f"in the session-profile snapshot: {reference.identity()!r}."
+                    )
         return self
 
 

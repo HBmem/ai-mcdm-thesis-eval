@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
+from src.ai.advisory.progress import AdvisoryCallProgress
 from src.ai.comprehension.progress import DCLCallProgress
 from src.ai.progress import PreflightProgress
 from src.ai.reporting.progress import ReportingCallProgress
@@ -66,5 +67,6 @@ ProgressEvent: TypeAlias = (
     | AIRepetitionProgress
     | DCLCallProgress
     | ReportingCallProgress
+    | AdvisoryCallProgress
     | PreflightProgress
 )

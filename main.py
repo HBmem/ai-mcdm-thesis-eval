@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from contextlib import ExitStack
 
+from src.ai.advisory.progress import AdvisoryCallProgress
 from src.ai.reporting.progress import ReportingCallProgress
 from src.experiments.loader import load_experiments
 from src.experiments.progress import (
@@ -143,12 +144,12 @@ class CLIProgressReporter:
             print(message, file=self.stream, flush=True)
             return
 
-        if isinstance(event, ReportingCallProgress):
+        if isinstance(event, (ReportingCallProgress, AdvisoryCallProgress)):
             position = (
                 f"{event.attempt}/{event.max_attempts}"
             )
 
-            target = "data_explanation_reporting"
+            target = event.stage
 
             if event.state == "request_started":
                 message = (

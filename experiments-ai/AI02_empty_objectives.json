@@ -6,10 +6,10 @@
   "purpose": "Compare AI output while holding numerical inputs and model settings fixed and varying only authored scenario information.",
   "scenario": {
     "id": "transportation_prioritization",
-    "description": "Synthetic municipal transportation project selection; no empirical or stakeholder survey claims.",
+    "description": "Municipal transportation project selection.",
     "policy_question": "How should a municipal government prioritize transportation improvement initiatives when balancing implementation costs, public accessibility, environmental benefits, and implementation time?",
     "context": {
-      "municipality": "Fictional mid-sized city",
+      "municipality": "Mid-sized city",
       "planning_horizon_years": 5,
       "background": "The municipality is experiencing population growth, increased traffic congestion, and unequal transportation access across neighborhoods.",
       "decision_scope": "Prioritization of transportation initiatives for municipal capital investment.",
@@ -68,7 +68,7 @@
     ]
   },
   "resources": {
-    "criteria": "../criteria/transport_v1.json",
+    "criteria": "../criteria/transport_ai_v1.json",
     "alternatives": "../alternative/transport_core_v1.json",
     "dataset": "../datasets/transport_core_v1.csv",
     "dataset_join_key": "alternative_id"
@@ -106,7 +106,8 @@
       "repetitions": 1,
       "layers": [
         "data_comprehension",
-        "data_explanation_reporting"
+        "data_explanation_reporting",
+        "policy_decision_advisory"
       ],
       "provider": null,
       "model": null,

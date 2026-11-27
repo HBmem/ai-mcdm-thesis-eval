@@ -21,6 +21,8 @@ from importlib.metadata import PackageNotFoundError, version
 from datetime import datetime, timezone
 from typing import Literal
 
+from src.ai.advisory.orchestration import run_advisory_for_reporting_repetition
+from src.ai.advisory.storage import save_policy_decision_advisory_outcome
 from src.ai.comprehension.orchestration import run_dcl_repetition_for_result
 from src.ai.comprehension.storage import save_dcl_repetition_outcome
 from src.ai.diagnostics import (
@@ -67,6 +69,7 @@ ALLOWED_SCOPES = {"participant", "group", "session"}
 IMPLEMENTED_AI_LAYERS = frozenset({
     "data_comprehension",
     "data_explanation_reporting",
+    "policy_decision_advisory",
 })
 
 ProgressCallback = Callable[[ProgressEvent], None]
@@ -2244,6 +2247,15 @@ def execute_experiments(
             requested_layers = set(request.layers)
 
             if (
+                "policy_decision_advisory" in requested_layers
+                and "data_explanation_reporting" not in requested_layers
+            ):
+                raise ValueError(
+                    f"{run.key}: policy_decision_advisory requires "
+                    "data_explanation_reporting."
+                )
+
+            if (
                 "data_explanation_reporting"
                 in requested_layers
                 and "data_comprehension"
@@ -2667,11 +2679,17 @@ def execute_experiments(
                 "data_explanation_reporting"
                 in run.experiment.ai.layers
             )
+            advisory_requested = (
+                "policy_decision_advisory"
+                in run.experiment.ai.layers
+            )
 
             if reporting_requested:
                 ai_scope.append(
                     "data_explanation_reporting"
                 )
+            if advisory_requested:
+                ai_scope.append("policy_decision_advisory")
 
             result.execution["ai_scope"] = ai_scope
 
@@ -2765,10 +2783,7 @@ def execute_experiments(
                 reporting_artifact_root = None
                 reporting_status = "not_requested"
 
-                if (
-                    "data_explanation_reporting"
-                    in run.experiment.ai.layers
-                ):
+                if reporting_requested:
                     reporting_outcome = (
                         run_reporting_for_dcl_repetition(
                             backend=ai_component.backend,
@@ -2808,6 +2823,33 @@ def execute_experiments(
                             )
                         )
 
+                advisory_status = "not_requested"
+                advisory_outcome = None
+                advisory_root = None
+
+                if advisory_requested:
+                    assert reporting_outcome is not None
+                    advisory_outcome = run_advisory_for_reporting_repetition(
+                        backend=ai_component.backend,
+                        result=result,
+                        reporting_outcome=reporting_outcome,
+                        max_retries=ai_component.config.max_retries,
+                        retry_base_seconds=ai_component.config.retry_base_seconds,
+                        retry_max_wait_seconds=(
+                            ai_component.config.retry_max_wait_seconds
+                        ),
+                        on_progress=emit,
+                    )
+                    advisory_status = advisory_outcome.status
+
+                    if advisory_outcome.stage_outcome is not None:
+                        advisory_root = save_policy_decision_advisory_outcome(
+                            run_directory=run_directory,
+                            outcome=advisory_outcome,
+                            save_ai_calls=flags["save_ai_calls"],
+                            save_ai_responses=flags["save_ai_responses"],
+                        )
+
                 if reporting_status == "not_requested":
                     repetition_status = dcl_outcome.status
 
@@ -2821,6 +2863,13 @@ def execute_experiments(
                     repetition_status = "failed"
 
                 else:
+                    repetition_status = "partial"
+
+                if (
+                    repetition_status == "completed"
+                    and advisory_requested
+                    and advisory_status != "completed"
+                ):
                     repetition_status = "partial"
 
                 repetition_statuses.append(
@@ -2843,6 +2892,7 @@ def execute_experiments(
                             dcl_outcome.session_profile_status
                         ),
                         "data_explanation_reporting": reporting_status,
+                        "policy_decision_advisory": advisory_status,
                     },
                     "expected_group_ids": list(
                         dcl_outcome.expected_group_ids
@@ -2899,6 +2949,24 @@ def execute_experiments(
                         if reporting_outcome is not None
                         else None
                     ),
+                    "advisory_call_count": (
+                        len(advisory_outcome.stage_outcome.calls)
+                        if (
+                            advisory_outcome is not None
+                            and advisory_outcome.stage_outcome is not None
+                        )
+                        else 0
+                    ),
+                    "advisory_artifact_directory": (
+                        advisory_root.relative_to(run_directory).as_posix()
+                        if advisory_root is not None
+                        else None
+                    ),
+                    "advisory_blocked_reason": (
+                        advisory_outcome.blocked_reason
+                        if advisory_outcome is not None
+                        else None
+                    ),
                 }
 
                 # Preserve completed repetition progress.
@@ -2924,6 +2992,8 @@ def execute_experiments(
                         f"{len(dcl_outcome.failed_group_ids)} failed"
                         "; data explanation reporting="
                         f"{reporting_status}"
+                        "; policy decision advisory="
+                        f"{advisory_status}"
                     ),
                 ))
 

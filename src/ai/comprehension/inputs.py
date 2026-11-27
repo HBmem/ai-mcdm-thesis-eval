@@ -432,19 +432,6 @@ def _validate_session_diagnostics(
         SessionCalculationView | None
     ),
 ) -> None:
-    diagnostic_ids = [
-        diagnostic.diagnostic_id
-        for diagnostic in diagnostics
-    ]
-
-    if len(diagnostic_ids) != len(
-        set(diagnostic_ids)
-    ):
-        raise ValueError(
-            "Session diagnostics must have "
-            "unique identifiers."
-        )
-
     known_entity_ids = {
         group.group.id
         for group in groups
@@ -818,6 +805,10 @@ def build_session_profile_input(
 
     calculation = _session_calculation(result)
 
+    prior_interpretations, diagnostics = _session_profile_priors_and_diagnostics(
+        state=state,
+        diagnostics=diagnostics,
+    )
     _validate_session_diagnostics(
         diagnostics=diagnostics,
         groups=groups,
@@ -876,13 +867,6 @@ def build_session_profile_input(
         )
     )
 
-    prior_interpretations = (
-        _session_profile_priors(
-            state=state,
-            available_evidence=available_evidence,
-        )
-    )
-
     return SessionProfileInput(
         scenario=scenario,
         criteria=criteria,
@@ -894,20 +878,16 @@ def build_session_profile_input(
         available_evidence=available_evidence,
         required_limitations=tuple(limitations),
 
-        # Added only after safe downstream selection.
-        prior_interpretations=(
-            prior_interpretations
-        ),
+        prior_interpretations=prior_interpretations,
     )
 
 
-def _session_profile_priors(
+def _session_profile_priors_and_diagnostics(
     *,
     state: DCLRunState,
-    available_evidence: tuple[
-        EvidenceReference, ...
-    ],
-) -> tuple[PriorInterpretation, ...]:
+    diagnostics: tuple[DiagnosticContext, ...],
+) -> tuple[tuple[PriorInterpretation, ...], tuple[DiagnosticContext, ...]]:
+    """Select prior findings and bring their original group diagnostics along."""
     session_artifact = (
         state.session_understanding
     )
@@ -923,10 +903,9 @@ def _session_profile_priors(
         *state.group_profiles,
     )
 
-    available = {
-        reference.identity()
-        for reference in available_evidence
-    }
+    diagnostics_by_id = {diagnostic.diagnostic_id: diagnostic for diagnostic in diagnostics}
+    if len(diagnostics_by_id) != len(diagnostics):
+        raise ValueError("Session diagnostics must have unique identifiers.")
 
     priors: list[PriorInterpretation] = []
     finding_ids: set[str] = set()
@@ -952,6 +931,12 @@ def _session_profile_priors(
         entity_ids = _artifact_entity_ids(
             artifact
         )
+        source_snapshot = artifact.input_snapshot
+        source_diagnostics = (
+            {diagnostic.diagnostic_id: diagnostic for diagnostic in source_snapshot.diagnostics}
+            if isinstance(source_snapshot, GroupProfileInput)
+            else {}
+        )
 
         for finding in artifact.findings:
             if (
@@ -972,18 +957,24 @@ def _session_profile_priors(
                     "must be unique."
                 )
 
-            cited = {
-                reference.identity()
-                for reference
-                in finding.draft.evidence
-            }
+            for reference in finding.draft.evidence:
+                if reference.object_type != "diagnostic":
+                    continue
 
-            if not cited <= available:
-                raise ValueError(
-                    "A prior finding cites evidence "
-                    "that is unavailable in the "
-                    "session-profile snapshot."
-                )
+                diagnostic_id = reference.object_id
+                diagnostic = source_diagnostics.get(diagnostic_id)
+                if diagnostic is None:
+                    raise ValueError(
+                        f"Prior finding {finding.finding_id!r} cites diagnostic "
+                        f"{diagnostic_id!r} missing from its source snapshot."
+                    )
+
+                existing = diagnostics_by_id.setdefault(diagnostic_id, diagnostic)
+                if existing != diagnostic:
+                    raise ValueError(
+                        f"Conflicting diagnostic {diagnostic_id!r} cited by "
+                        f"prior finding {finding.finding_id!r}."
+                    )
 
             finding_ids.add(
                 finding.finding_id
@@ -1012,7 +1003,7 @@ def _session_profile_priors(
                 )
             )
 
-    return tuple(priors)
+    return tuple(priors), tuple(diagnostics_by_id.values())
 
 
 def build_group_profile_input(
