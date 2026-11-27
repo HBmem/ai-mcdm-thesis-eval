@@ -23,7 +23,10 @@ from typing import Literal
 
 from src.ai.comprehension.orchestration import run_dcl_repetition_for_result
 from src.ai.comprehension.storage import save_dcl_repetition_outcome
-from src.ai.diagnostics import build_session_diagnostic_contexts
+from src.ai.diagnostics import (
+    build_group_diagnostic_contexts,
+    build_session_diagnostic_contexts,
+)
 from src.ai.reporting.orchestration import run_reporting_for_dcl_repetition
 from src.ai.reporting.storage import save_data_explanation_reporting_outcome
 from src.common.time import timestamp
@@ -2699,6 +2702,7 @@ def execute_experiments(
             session_diagnostics = (
                 build_session_diagnostic_contexts(result)
             )
+            diagnostics_by_group = build_group_diagnostic_contexts(result)
 
             for ai_repetition in range(
                 1,
@@ -2726,6 +2730,7 @@ def execute_experiments(
                         ai_component.config.retry_max_wait_seconds
                     ),
                     on_progress=emit,
+                    diagnostics_by_group=diagnostics_by_group,
                     session_diagnostics=(
                         session_diagnostics
                     ),

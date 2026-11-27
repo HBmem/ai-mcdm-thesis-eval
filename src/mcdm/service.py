@@ -19,11 +19,20 @@ from src.mcdm.enums import (
 from src.mcdm.models.domain import Participant
 from src.mcdm.models.methods import RankingMethodConfig, WeightingMethodConfig, AggregationMethodConfig, ConsistencyMethodConfig
 from src.mcdm.models.session import DecisionSession
-from src.mcdm.models.computation import WeightResult, CriterionWeight, RankingResult, AlternativeRanking
+from src.mcdm.models.computation import (
+    WEIGHT_SUM_TOLERANCE,
+    AlternativeRanking,
+    CriterionWeight,
+    RankingResult,
+    WeightResult,
+)
 
 
 ROUNDOFF_TOLERANCE = 1e-12
-WEIGHT_SUM_TOLERANCE = 1e-10
+
+
+class UndefinedTopsisScoresError(ValueError):
+    """TOPSIS encountered a floating-point error while computing scores."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -651,7 +660,7 @@ class MCDMService:
                     verbose=False,
                 )
         except FloatingPointError as error:
-            raise ValueError(
+            raise UndefinedTopsisScoresError(
                 "TOPSIS could not calculate finite scores. "
                 "Check for numerically undefined inputs, "
                 "including identical effective alternatives."
@@ -790,7 +799,7 @@ class MCDMService:
             or not np.isclose(
                 weights.sum(),
                 1.0,
-                atol=1e-10,
+                atol=WEIGHT_SUM_TOLERANCE,
                 rtol=0,
             )
         ):

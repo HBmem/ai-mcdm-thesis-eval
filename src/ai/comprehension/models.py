@@ -510,7 +510,7 @@ class GroupProfileResponse(Record):
     priorities: InterpretationDraft = Field(description="Highest/lowest importance and ties; priorities do not establish motivations.")
     ranking: InterpretationDraft = Field(description="Recorded ordering/scores and ties, or unavailable ranking evidence.")
     representation: InterpretationDraft = Field(description="Counts and configured/effective power, with representativeness limits.")
-    diagnostics: tuple[InterpretationDraft, ...] = Field(description="Only interpretations of supplied agreement, variation, influence or robustness results.")
+    diagnostics: tuple[InterpretationDraft, ...] = Field(description="Interpretations of supplied diagnostics covering this group.")
     limitations: tuple[InterpretationDraft, ...] = Field(description="Additional evidence-linked gaps beyond application-required disclosures.")
 
 

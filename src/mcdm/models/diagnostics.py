@@ -10,6 +10,8 @@ from pydantic import (
     model_validator,
 )
 
+from src.mcdm.models.computation import WEIGHT_SUM_TOLERANCE
+
 
 ConsistencyStatus = Literal[
     "within_threshold",
@@ -1373,10 +1375,19 @@ class LeaveOneGroupOutCase(BaseModel):
 
     @model_validator(mode="after")
     def validate_case(self) -> Self:
+        if (
+            not self.baseline_winner_ids
+            or len(self.baseline_winner_ids)
+            != len(set(self.baseline_winner_ids))
+        ):
+            raise ValueError(
+                "Baseline winner IDs must be nonempty and unique."
+            )
+
         if self.status == "not_evaluable":
             if (
-                not self.not_evaluable_reason
-                or not self.not_evaluable_reason.strip()
+                not (self.not_evaluable_reason or "").strip()
+                or self.effective_voting_powers
                 or self.winner_changed is not None
                 or self.recomputed_winner_ids
                 or self.criterion_weight_changes
@@ -1387,8 +1398,8 @@ class LeaveOneGroupOutCase(BaseModel):
                 or self.recomputed_consistency_ratio is not None
             ):
                 raise ValueError(
-                    "Not-evaluable omission cases require a reason and "
-                    "must not contain recomputed results."
+                    "Unavailable omissions require a reason and no "
+                    "recomputed data."
                 )
             return self
 
@@ -1421,6 +1432,13 @@ class LeaveOneGroupOutCase(BaseModel):
                 "Effective voting powers must sum to one."
             )
 
+        if len(self.recomputed_winner_ids) != len(
+            set(self.recomputed_winner_ids)
+        ):
+            raise ValueError(
+                "Recomputed winner IDs must be unique."
+            )
+
         if not self.baseline_winner_ids or not self.recomputed_winner_ids:
             raise ValueError(
                 "Completed omission cases require baseline and "
@@ -1443,6 +1461,25 @@ class LeaveOneGroupOutCase(BaseModel):
         if not self.alternative_changes:
             raise ValueError(
                 "Completed omission cases require alternative changes."
+            )
+
+        criterion_ids = tuple(
+            change.criterion_id
+            for change in self.criterion_weight_changes
+        )
+        alternative_ids = tuple(
+            change.alternative_id
+            for change in self.alternative_changes
+        )
+
+        if len(criterion_ids) != len(set(criterion_ids)):
+            raise ValueError(
+                "Criterion weight changes require unique IDs."
+            )
+
+        if len(alternative_ids) != len(set(alternative_ids)):
+            raise ValueError(
+                "Alternative changes require unique IDs."
             )
 
         expected_maximum_weight_delta = max(
@@ -1555,5 +1592,516 @@ class LeaveOneGroupOutResult(BaseModel):
                     "Each omission case must omit its corresponding "
                     "group and retain all other groups in order."
                 )
+
+        if len(self.baseline_winner_ids) != len(
+            set(self.baseline_winner_ids)
+        ):
+            raise ValueError(
+                "Baseline winner IDs must be unique."
+            )
+
+        if any(
+            case.baseline_winner_ids
+            != self.baseline_winner_ids
+            for case in self.cases
+        ):
+            raise ValueError(
+                "Every omission case must use the result's "
+                "baseline winner IDs."
+            )
+
+        completed_cases = tuple(
+            case
+            for case in self.cases
+            if case.status == "completed"
+        )
+
+        if completed_cases:
+            expected_criterion_ids = tuple(
+                change.criterion_id
+                for change
+                in completed_cases[0].criterion_weight_changes
+            )
+            expected_alternative_ids = tuple(
+                change.alternative_id
+                for change
+                in completed_cases[0].alternative_changes
+            )
+
+            for case in completed_cases[1:]:
+                if tuple(
+                    change.criterion_id
+                    for change in case.criterion_weight_changes
+                ) != expected_criterion_ids:
+                    raise ValueError(
+                        "Completed omission cases must use the "
+                        "same criterion order."
+                    )
+
+                if tuple(
+                    change.alternative_id
+                    for change in case.alternative_changes
+                ) != expected_alternative_ids:
+                    raise ValueError(
+                        "Completed omission cases must use the "
+                        "same alternative order."
+                    )
+
+        return self
+
+
+class CriterionRemovalCase(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid", frozen=True, strict=True, allow_inf_nan=False,
+    )
+
+    removed_criterion_id: str = Field(min_length=1)
+    retained_criterion_ids: tuple[str, ...]
+    status: Literal["completed", "not_evaluable"]
+    reason: str | None = None
+    applied_weights: dict[str, float] | None = None
+    alternative_changes: tuple[LeaveOneOutAlternativeChange, ...] = ()
+    winner_ids: tuple[str, ...] = ()
+    winner_changed: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_case(self) -> Self:
+        if self.status == "not_evaluable":
+            if (
+                not (self.reason or "").strip()
+                or self.applied_weights is not None
+                or self.alternative_changes
+                or self.winner_ids
+                or self.winner_changed is not None
+            ):
+                raise ValueError(
+                    "Unavailable removals require a reason and no outcomes."
+                )
+            return self
+
+        if (
+            self.reason is not None
+            or not self.retained_criterion_ids
+            or self.applied_weights is None
+            or set(self.applied_weights) != set(self.retained_criterion_ids)
+            or not self.alternative_changes
+            or not self.winner_ids
+            or self.winner_changed is None
+        ):
+            raise ValueError("Completed removals require retained weights and outcomes.")
+        if any(
+            not 0 <= weight <= 1 for weight in self.applied_weights.values()
+        ) or not math.isclose(
+            math.fsum(self.applied_weights.values()), 1.0,
+            rel_tol=0, abs_tol=WEIGHT_SUM_TOLERANCE,
+        ):
+            raise ValueError("Retained weights must be normalized.")
+        return self
+
+
+class CriterionRemovalResult(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid", frozen=True, strict=True, allow_inf_nan=False,
+    )
+
+    schema_version: Literal["criterion-removal-v1"] = "criterion-removal-v1"
+    session_id: str = Field(min_length=1)
+    group_id: str | None = Field(default=None, min_length=1)
+    tie_atol: float = Field(ge=0)
+    ranking_criterion_ids: tuple[str, ...] = Field(min_length=1)
+    baseline_applied_weights: dict[str, float]
+    alternative_ids: tuple[str, ...] = Field(min_length=1)
+    baseline_winner_ids: tuple[str, ...] = Field(min_length=1)
+    cases: tuple[CriterionRemovalCase, ...]
+
+    @model_validator(mode="after")
+    def validate_cases(self) -> Self:
+        criterion_ids = self.ranking_criterion_ids
+        if (
+            len(set(criterion_ids)) != len(criterion_ids)
+            or set(self.baseline_applied_weights) != set(criterion_ids)
+            or tuple(case.removed_criterion_id for case in self.cases) != criterion_ids
+        ):
+            raise ValueError(
+                "Baseline weights and removal cases must cover the ranking criteria."
+            )
+        if any(
+            not 0 <= weight <= 1 for weight in self.baseline_applied_weights.values()
+        ) or not math.isclose(
+            math.fsum(self.baseline_applied_weights.values()), 1.0,
+            rel_tol=0, abs_tol=WEIGHT_SUM_TOLERANCE,
+        ):
+            raise ValueError("Baseline applied weights must be normalized.")
+
+        alternatives = set(self.alternative_ids)
+        baseline_winners = set(self.baseline_winner_ids)
+        if (
+            len(alternatives) != len(self.alternative_ids)
+            or len(baseline_winners) != len(self.baseline_winner_ids)
+            or not baseline_winners <= alternatives
+        ):
+            raise ValueError("Baseline alternatives and winners must be unique and aligned.")
+
+        baseline_outcomes: tuple[tuple[float, float], ...] | None = None
+        for case in self.cases:
+            expected_retained = tuple(
+                cid for cid in criterion_ids if cid != case.removed_criterion_id
+            )
+            if case.retained_criterion_ids != expected_retained:
+                raise ValueError("Each case must remove exactly its declared criterion.")
+            if case.status != "completed":
+                continue
+
+            applied = case.applied_weights
+            mass = math.fsum(self.baseline_applied_weights[cid] for cid in expected_retained)
+            if applied is None or mass <= 0 or any(
+                not math.isclose(
+                    applied[cid], self.baseline_applied_weights[cid] / mass,
+                    rel_tol=0, abs_tol=WEIGHT_SUM_TOLERANCE,
+                )
+                for cid in expected_retained
+            ):
+                raise ValueError("Retained weights must be proportional to baseline weights.")
+            change_ids = tuple(change.alternative_id for change in case.alternative_changes)
+            if change_ids != self.alternative_ids:
+                raise ValueError("Removal outcomes must follow baseline alternative order.")
+
+            case_baseline_outcomes = tuple(
+                (change.baseline_score, change.baseline_statistical_rank)
+                for change in case.alternative_changes
+            )
+            if baseline_outcomes is None:
+                baseline_outcomes = case_baseline_outcomes
+                baseline_best = max(change.baseline_score for change in case.alternative_changes)
+                expected_baseline_winners = {
+                    change.alternative_id
+                    for change in case.alternative_changes
+                    if baseline_best - change.baseline_score <= self.tie_atol
+                }
+                if baseline_winners != expected_baseline_winners:
+                    raise ValueError("Baseline winner IDs must match the baseline scores.")
+            elif case_baseline_outcomes != baseline_outcomes:
+                raise ValueError("Completed removals must share baseline scores and ranks.")
+
+            winners = set(case.winner_ids)
+            best_score = max(change.recomputed_score for change in case.alternative_changes)
+            expected_winners = {
+                change.alternative_id for change in case.alternative_changes
+                if best_score - change.recomputed_score <= self.tie_atol
+            }
+            if (
+                len(winners) != len(case.winner_ids)
+                or winners != expected_winners
+                or case.winner_changed is not (winners != baseline_winners)
+            ):
+                raise ValueError("Removal winner evidence must match the scores and baseline.")
+        return self
+
+
+class AlternativeRemovalCase(BaseModel):
+    """Compare a reranking with baseline scores and ranks among survivors."""
+
+    model_config = ConfigDict(
+        extra="forbid", frozen=True, strict=True, allow_inf_nan=False,
+    )
+
+    removed_alternative_id: str = Field(min_length=1)
+    retained_alternative_ids: tuple[str, ...]
+    baseline_winner_removed: bool
+    baseline_survivor_winner_ids: tuple[str, ...]
+    status: Literal["completed", "not_evaluable"]
+    reason: str | None = None
+    alternative_changes: tuple[LeaveOneOutAlternativeChange, ...] = ()
+    recomputed_winner_ids: tuple[str, ...] = ()
+    survivor_winner_changed: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> Self:
+        if self.status == "not_evaluable":
+            if (
+                not (self.reason or "").strip()
+                or self.alternative_changes
+                or self.recomputed_winner_ids
+                or self.survivor_winner_changed is not None
+            ):
+                raise ValueError("Unavailable alternative removals require a reason and no outcomes.")
+        elif (
+            self.reason is not None
+            or len(self.retained_alternative_ids) < 2
+            or not self.recomputed_winner_ids
+            or self.survivor_winner_changed is None
+            or tuple(change.alternative_id for change in self.alternative_changes)
+            != self.retained_alternative_ids
+        ):
+            raise ValueError("Completed alternative removals require outcomes for all survivors.")
+        return self
+
+
+class AlternativeRemovalResult(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid", frozen=True, strict=True, allow_inf_nan=False,
+    )
+
+    schema_version: Literal["alternative-removal-v1"] = "alternative-removal-v1"
+    session_id: str = Field(min_length=1)
+    group_id: str | None = Field(default=None, min_length=1)
+    tie_atol: float = Field(ge=0)
+    ranking_criterion_ids: tuple[str, ...] = Field(min_length=1)
+    applied_weights: dict[str, float]
+    baseline_entries: tuple[DiagnosticRankEntry, ...] = Field(min_length=1)
+    baseline_winner_ids: tuple[str, ...] = Field(min_length=1)
+    cases: tuple[AlternativeRemovalCase, ...]
+
+    def _winner_set(self, scores: dict[str, float]) -> set[str]:
+        if not scores:
+            return set()
+        best = max(scores.values())
+        return {aid for aid, score in scores.items() if best - score <= self.tie_atol}
+
+    @model_validator(mode="after")
+    def validate_cases(self) -> Self:
+        if (
+            len(set(self.ranking_criterion_ids)) != len(self.ranking_criterion_ids)
+            or set(self.applied_weights) != set(self.ranking_criterion_ids)
+            or any(not 0 <= weight <= 1 for weight in self.applied_weights.values())
+            or not math.isclose(
+                math.fsum(self.applied_weights.values()), 1.0,
+                rel_tol=0, abs_tol=WEIGHT_SUM_TOLERANCE,
+            )
+        ):
+            raise ValueError("Applied weights must cover the ranking criteria and sum to one.")
+
+        scores = {entry.alternative_id: entry.score for entry in self.baseline_entries}
+        expected_winners = self._winner_set(scores)
+        if (
+            len(scores) != len(self.baseline_entries)
+            or self.baseline_winner_ids != tuple(sorted(expected_winners))
+            or tuple(case.removed_alternative_id for case in self.cases) != tuple(scores)
+        ):
+            raise ValueError("Baseline ranking and removal cases must cover the same alternatives.")
+
+        for case in self.cases:
+            removed_id = case.removed_alternative_id
+            survivor_scores = {aid: score for aid, score in scores.items() if aid != removed_id}
+            survivor_winners = self._winner_set(survivor_scores)
+            if (
+                case.retained_alternative_ids != tuple(survivor_scores)
+                or case.baseline_winner_removed != (removed_id in expected_winners)
+                or case.baseline_survivor_winner_ids != tuple(sorted(survivor_winners))
+            ):
+                raise ValueError("Removal case must match the baseline and its surviving alternatives.")
+            if case.status == "completed":
+                new_scores = {
+                    change.alternative_id: change.recomputed_score
+                    for change in case.alternative_changes
+                }
+                new_winners = self._winner_set(new_scores)
+                if (
+                    case.recomputed_winner_ids != tuple(sorted(new_winners))
+                    or case.survivor_winner_changed != (new_winners != survivor_winners)
+                    or any(
+                        change.baseline_score != survivor_scores[change.alternative_id]
+                        for change in case.alternative_changes
+                    )
+                ):
+                    raise ValueError("Removal outcomes must agree with the scores and winner sets.")
+        return self
+
+
+class BoundedWeightPerturbationCase(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid", frozen=True, strict=True, allow_inf_nan=False,
+    )
+
+    criterion_id: str = Field(min_length=1)
+    requested_delta: float = Field(gt=-1, lt=1)
+    status: Literal["completed", "not_evaluable"]
+    reason: str | None = None
+
+    applied_weights: dict[str, float] | None = None
+    entries: tuple[DiagnosticRankEntry, ...] = ()
+    winner_ids: tuple[str, ...] = ()
+    winner_changed: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_case(self) -> Self:
+        if self.status == "not_evaluable":
+            if (
+                not (self.reason or "").strip()
+                or self.applied_weights is not None
+                or self.entries
+                or self.winner_ids
+                or self.winner_changed is not None
+            ):
+                raise ValueError(
+                    "Unavailable perturbations require a reason and "
+                    "no outcome data."
+                )
+            return self
+
+        if (
+            self.reason is not None
+            or self.applied_weights is None
+            or not self.entries
+            or not self.winner_ids
+            or self.winner_changed is None
+        ):
+            raise ValueError(
+                "Completed perturbations require outcome data and "
+                "cannot have a reason."
+            )
+
+        if any(
+            weight < 0 or weight > 1
+            for weight in self.applied_weights.values()
+        ) or not math.isclose(
+            math.fsum(self.applied_weights.values()),
+            1.0,
+            rel_tol=0,
+            abs_tol=1e-12,
+        ):
+            raise ValueError(
+                "Applied weights must be a normalized weight vector."
+            )
+
+        alternative_ids = tuple(
+            entry.alternative_id for entry in self.entries
+        )
+        if len(alternative_ids) != len(set(alternative_ids)):
+            raise ValueError(
+                "Perturbation entries require unique alternative IDs."
+            )
+
+        if (
+            len(self.winner_ids) != len(set(self.winner_ids))
+            or not set(self.winner_ids) <= set(alternative_ids)
+        ):
+            raise ValueError(
+                "Winner IDs must be unique alternatives in the entries."
+            )
+
+        return self
+
+
+class BoundedWeightPerturbationResult(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid", frozen=True, strict=True, allow_inf_nan=False,
+    )
+
+    schema_version: Literal["bounded-weight-perturbations-v1"] = (
+        "bounded-weight-perturbations-v1"
+    )
+    session_id: str = Field(min_length=1)
+    group_id: str | None = Field(default=None, min_length=1)
+    absolute_weight_delta: float = Field(gt=0, lt=1)
+    tie_atol: float = Field(ge=0)
+    ranking_criterion_ids: tuple[str, ...] = Field(min_length=1)
+    baseline_applied_weights: dict[str, float]
+    baseline_entries: tuple[DiagnosticRankEntry, ...] = Field(min_length=1)
+    baseline_winner_ids: tuple[str, ...] = Field(min_length=1)
+    cases: tuple[BoundedWeightPerturbationCase, ...]
+
+    @model_validator(mode="after")
+    def validate_result(self) -> Self:
+        criterion_ids = self.ranking_criterion_ids
+        if len(criterion_ids) != len(set(criterion_ids)):
+            raise ValueError("Ranking criterion IDs must be unique.")
+
+        if set(self.baseline_applied_weights) != set(criterion_ids):
+            raise ValueError(
+                "Baseline applied weights must cover exactly the "
+                "ranking criteria."
+            )
+
+        if any(
+            weight < 0 or weight > 1
+            for weight in self.baseline_applied_weights.values()
+        ) or not math.isclose(
+            math.fsum(self.baseline_applied_weights.values()),
+            1.0,
+            rel_tol=0,
+            abs_tol=WEIGHT_SUM_TOLERANCE,
+        ):
+            raise ValueError(
+                "Baseline applied weights must be a normalized "
+                "weight vector."
+            )
+
+        baseline_alternative_ids = tuple(
+            entry.alternative_id for entry in self.baseline_entries
+        )
+        if len(baseline_alternative_ids) != len(
+            set(baseline_alternative_ids)
+        ):
+            raise ValueError(
+                "Baseline entries require unique alternative IDs."
+            )
+
+        if (
+            len(self.baseline_winner_ids)
+            != len(set(self.baseline_winner_ids))
+            or not set(self.baseline_winner_ids)
+            <= set(baseline_alternative_ids)
+        ):
+            raise ValueError(
+                "Baseline winner IDs must be unique alternatives "
+                "in the baseline entries."
+            )
+
+        if len(self.cases) != 2 * len(criterion_ids):
+            raise ValueError(
+                "Each ranking criterion requires exactly two "
+                "perturbation cases."
+            )
+
+        baseline_criteria = set(self.baseline_applied_weights)
+        expected_case_order = tuple(
+            (criterion_id, requested_delta)
+            for criterion_id in criterion_ids
+            for requested_delta in (
+                -self.absolute_weight_delta,
+                self.absolute_weight_delta,
+            )
+        )
+        for case, (criterion_id, requested_delta) in zip(
+            self.cases,
+            expected_case_order,
+            strict=True,
+        ):
+            if (
+                case.criterion_id != criterion_id
+                or case.requested_delta != requested_delta
+            ):
+                raise ValueError(
+                    "Perturbation cases must follow ranking criterion "
+                    "order with negative then positive deltas."
+                )
+
+            if case.status == "completed":
+                if (
+                    set(case.applied_weights or {}) != baseline_criteria
+                ):
+                    raise ValueError(
+                        "Completed perturbation weights must cover "
+                        "exactly the baseline criteria."
+                    )
+
+                alternative_ids = tuple(
+                    entry.alternative_id for entry in case.entries
+                )
+                if alternative_ids != baseline_alternative_ids:
+                    raise ValueError(
+                        "Completed perturbation entries must follow "
+                        "baseline alternative order."
+                    )
+
+                expected_winner_changed = (
+                    set(case.winner_ids)
+                    != set(self.baseline_winner_ids)
+                )
+                if case.winner_changed is not expected_winner_changed:
+                    raise ValueError(
+                        "Winner-changed status must match the winner sets."
+                    )
 
         return self

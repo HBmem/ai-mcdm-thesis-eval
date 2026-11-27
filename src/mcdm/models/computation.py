@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 from typing import Literal
 
+WEIGHT_SUM_TOLERANCE = 1e-10
+
 class CriterionWeight(BaseModel):
     """Final AHP weight assigned to one criterion after stakeholder aggregation."""
 

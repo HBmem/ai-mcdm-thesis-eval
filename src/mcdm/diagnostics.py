@@ -16,7 +16,13 @@ from src.mcdm.models.computation import EntityCalculation, RankingResult, Weight
 from src.mcdm.models.diagnostics import (
     AdjacentScoreRankMargin,
     AlternativeWinnerSupport,
+    AlternativeRemovalCase,
+    AlternativeRemovalResult,
+    BoundedWeightPerturbationCase,
+    BoundedWeightPerturbationResult,
     ConsistencyWarningResult,
+    CriterionRemovalCase,
+    CriterionRemovalResult,
     CrossGroupRankCorrelationResult,
     DiagnosticRankEntry,
     EffectiveGroupPower,
@@ -38,7 +44,12 @@ from src.mcdm.models.diagnostics import (
 )
 from src.mcdm.models.methods import AggregationMethodConfig, ConsistencyMethodConfig, RankingMethodConfig, WeightingMethodConfig
 from src.mcdm.models.session import DecisionSession
-from src.mcdm.service import MCDMService, build_ranking_weighting
+from src.mcdm.service import (
+    MCDMService,
+    UndefinedTopsisScoresError,
+    build_ranking_weighting,
+    validate_weight_vector,
+)
 
 if TYPE_CHECKING:
     from src.experiments.results import RunResult
@@ -48,6 +59,10 @@ TIE_ATOL = 1e-12
 _UNDEFINED_CORRELATION_REASON = (
     "Correlation is undefined because at least one "
     "aligned ranking contains only ties."
+)
+_IDENTICAL_EFFECTIVE_ALTERNATIVES_REASON = (
+    "All positively weighted criteria have identical values across "
+    "alternatives, so TOPSIS is undefined."
 )
 _WEIGHTING_CONFIG_ADAPTER = TypeAdapter(
     WeightingMethodConfig
@@ -295,6 +310,22 @@ def _diagnostic_inputs(
     )
 
 
+def _ranking_diagnostic_baseline(
+    result: RunResult,
+    group_id: str | None,
+) -> tuple[tuple[str, ...], EntityCalculation]:
+    alternative_ids, groups, session = _diagnostic_inputs(result)
+    if group_id is None:
+        return alternative_ids, session
+
+    for calculation in groups:
+        if calculation.entity_id == group_id:
+            return alternative_ids, calculation
+    raise DiagnosticNotEvaluableError(
+        f"No evaluated ranking is available for group {group_id!r}."
+    )
+
+
 def _scores_by_alternative(
     calculation: EntityCalculation,
     *,
@@ -304,7 +335,7 @@ def _scores_by_alternative(
 
     if ranking is None:
         raise ValueError(
-            f"Group '{calculation.entity_id}' has no completed ranking."
+            f"Entity '{calculation.entity_id}' has no completed ranking."
         )
 
     scores = {
@@ -1079,6 +1110,79 @@ def _recomputed_session_ranking(
     return ranking, applied_weights
 
 
+def _rank_with_perturbed_weights(
+    *,
+    session: DecisionSession,
+    decision_matrix: np.ndarray,
+    baseline: EntityCalculation,
+    ranking_config: RankingMethodConfig,
+    perturbed_weights: dict[str, float],
+) -> RankingResult:
+    if baseline.weighting is None:
+        raise ValueError("Session perturbations require baseline weighting.")
+
+    return _rank_with_applied_weights(
+        session=session,
+        decision_matrix=decision_matrix,
+        original_weighting=baseline.weighting,
+        selected_ids=tuple(baseline.metadata.ranking_criterion_ids),
+        ranking_config=ranking_config,
+        applied_weights=perturbed_weights,
+    )
+
+
+def _rank_with_applied_weights(
+    *,
+    session: DecisionSession,
+    decision_matrix: np.ndarray,
+    original_weighting: WeightResult,
+    selected_ids: tuple[str, ...],
+    ranking_config: RankingMethodConfig,
+    applied_weights: dict[str, float],
+) -> RankingResult:
+    full_ids = tuple(criterion.id for criterion in session.criteria)
+
+    weighting, _, _ = build_ranking_weighting(
+        original_weighting,
+        full_criterion_ids=full_ids,
+        ranking_criterion_ids=selected_ids,
+        override=applied_weights,
+    )
+
+    positions_by_id = {cid: index for index, cid in enumerate(full_ids)}
+    positions = tuple(positions_by_id[cid] for cid in selected_ids)
+    ranking_session = session.model_copy(update={
+        "criteria": [session.criteria[index] for index in positions],
+    })
+
+    return MCDMService.generate_ranking(
+        session=ranking_session,
+        decision_matrix=decision_matrix[:, positions],
+        weighting=weighting,
+        config=ranking_config,
+    )
+
+
+def _identical_effective_alternatives(
+    decision_matrix: np.ndarray,
+    criteria_positions: Mapping[str, int],
+    applied_weights: Mapping[str, float],
+) -> bool:
+    if decision_matrix.ndim != 2 or decision_matrix.shape[0] == 0:
+        return False
+
+    active_positions = tuple(
+        criteria_positions[criterion_id]
+        for criterion_id, weight in applied_weights.items()
+        if weight > 0
+    )
+    if not active_positions:
+        return False
+
+    active_values = decision_matrix[:, active_positions]
+    return bool(np.all(active_values == active_values[0]))
+
+
 def _not_evaluable_omission_case(
     *,
     omitted_group_id: str,
@@ -1162,16 +1266,19 @@ def calculate_leave_one_group_out(
         baseline_session.metadata.applied_criterion_weights
     )
     selected_criterion_ids = tuple(
-        criterion.id
-        for criterion in session.criteria
-        if criterion.id in baseline_applied_weights
+        baseline_session.metadata.ranking_criterion_ids
     )
 
-    if set(selected_criterion_ids) != set(
-        baseline_applied_weights
+    if (
+        not selected_criterion_ids
+        or len(selected_criterion_ids)
+        != len(set(selected_criterion_ids))
+        or set(selected_criterion_ids)
+        != set(baseline_applied_weights)
     ):
         raise ValueError(
-            "Baseline applied weights must use configured criteria."
+            "Baseline ranking criteria and applied weights "
+            "must cover the same criteria exactly once."
         )
 
     cases = []
@@ -1337,6 +1444,466 @@ def calculate_leave_one_group_out(
         tie_atol=tolerance,
         evaluated_group_ids=group_ids,
         session_id=baseline_session.entity_id,
+        baseline_winner_ids=baseline_winners,
+        cases=tuple(cases),
+    )
+
+
+def perturb_applied_weights(
+    baseline_weights: Mapping[str, float],
+    *,
+    criterion_id: str,
+    weight_delta: float,
+) -> dict[str, float] | None:
+    """Move one weight by a signed amount and rescale its peers."""
+    if criterion_id not in baseline_weights:
+        raise ValueError(f"Unknown ranking criterion: {criterion_id!r}")
+
+    if not math.isfinite(weight_delta) or not 0 < abs(weight_delta) < 1:
+        raise ValueError("Weight delta must be finite and have magnitude in (0, 1).")
+
+    criterion_ids = tuple(baseline_weights)
+    validated = validate_weight_vector(
+        [baseline_weights[cid] for cid in criterion_ids],
+        expected_count=len(criterion_ids),
+        label="Baseline applied ranking weights",
+    )
+    weights = dict(zip(criterion_ids, map(float, validated), strict=True))
+
+    target_weight = weights[criterion_id] + weight_delta
+    if not 0 <= target_weight <= 1:
+        return None
+
+    other_weight = math.fsum(
+        weight for cid, weight in weights.items() if cid != criterion_id
+    )
+    if other_weight == 0:
+        return None
+
+    remaining_weight = 1.0 - target_weight
+    perturbed = {
+        cid: (
+            target_weight
+            if cid == criterion_id
+            else (weight / other_weight) * remaining_weight
+        )
+        for cid, weight in weights.items()
+    }
+
+    validate_weight_vector(
+        list(perturbed.values()),
+        expected_count=len(criterion_ids),
+        label="Perturbed applied ranking weights",
+    )
+    return perturbed
+
+
+def calculate_bounded_weight_perturbations(
+    result: RunResult,
+    *,
+    absolute_weight_delta: float,
+    tie_atol: float = TIE_ATOL,
+    group_id: str | None = None,
+) -> BoundedWeightPerturbationResult:
+    if (
+        isinstance(absolute_weight_delta, bool)
+        or not isinstance(absolute_weight_delta, Real)
+        or not math.isfinite(absolute_weight_delta)
+        or not 0 < absolute_weight_delta < 1
+    ):
+        raise ValueError(
+            "absolute_weight_delta must be finite and in (0, 1)."
+        )
+    absolute_weight_delta = float(absolute_weight_delta)
+    tolerance = _validated_tie_atol(tie_atol)
+    alternative_ids, baseline = _ranking_diagnostic_baseline(result, group_id)
+    (
+        session,
+        _,
+        ranking_config,
+        _,
+        _,
+    ) = _resolved_recomputation_inputs(result)
+
+    decision_matrix = MCDMService.create_decision_matrix(session)
+    baseline_scores = _scores_by_alternative(
+        baseline,
+        alternative_ids=alternative_ids,
+    )
+    baseline_ranks = statistical_ranks(
+        baseline_scores,
+        tie_atol=tolerance,
+    )
+    baseline_winners = winner_ids(
+        baseline_scores,
+        tie_atol=tolerance,
+    )
+    baseline_weights = dict(
+        baseline.metadata.applied_criterion_weights
+    )
+    criterion_ids = tuple(
+        baseline.metadata.ranking_criterion_ids
+    )
+
+    if (
+        not criterion_ids
+        or len(criterion_ids) != len(set(criterion_ids))
+        or set(criterion_ids) != set(baseline_weights)
+    ):
+        raise ValueError(
+            "Baseline ranking criteria and applied weights must "
+            "cover the same criteria exactly once."
+        )
+
+    criteria_positions = {
+        criterion.id: index
+        for index, criterion in enumerate(session.criteria)
+    }
+
+    cases = []
+    for criterion_id in criterion_ids:
+        for requested_delta in (
+            -absolute_weight_delta,
+            absolute_weight_delta,
+        ):
+            applied_weights = perturb_applied_weights(
+                baseline_weights,
+                criterion_id=criterion_id,
+                weight_delta=requested_delta,
+            )
+            if applied_weights is None:
+                cases.append(BoundedWeightPerturbationCase(
+                    criterion_id=criterion_id,
+                    requested_delta=requested_delta,
+                    status="not_evaluable",
+                    reason=(
+                        "The requested delta would make the applied "
+                        "weight vector infeasible."
+                    ),
+                ))
+                continue
+
+            try:
+                ranking = _rank_with_perturbed_weights(
+                    session=session,
+                    decision_matrix=decision_matrix,
+                    baseline=baseline,
+                    ranking_config=ranking_config,
+                    perturbed_weights=applied_weights,
+                )
+            except UndefinedTopsisScoresError:
+                if not _identical_effective_alternatives(
+                    decision_matrix, criteria_positions, applied_weights,
+                ):
+                    raise
+                cases.append(BoundedWeightPerturbationCase(
+                    criterion_id=criterion_id,
+                    requested_delta=requested_delta,
+                    status="not_evaluable",
+                    reason=_IDENTICAL_EFFECTIVE_ALTERNATIVES_REASON,
+                ))
+                continue
+
+            scores = {
+                row.alternative_id: float(row.closeness_coefficient)
+                for row in ranking.rankings
+            }
+            if (
+                len(scores) != len(ranking.rankings)
+                or set(scores) != set(alternative_ids)
+            ):
+                raise ValueError(
+                    "Perturbed ranking must cover the configured "
+                    "alternatives exactly once."
+                )
+
+            ranks = statistical_ranks(
+                scores,
+                tie_atol=tolerance,
+            )
+            recomputed_winners = winner_ids(
+                scores,
+                tie_atol=tolerance,
+            )
+            cases.append(BoundedWeightPerturbationCase(
+                criterion_id=criterion_id,
+                requested_delta=requested_delta,
+                status="completed",
+                applied_weights=applied_weights,
+                entries=tuple(
+                    DiagnosticRankEntry(
+                        alternative_id=alternative_id,
+                        score=scores[alternative_id],
+                        statistical_rank=ranks[alternative_id],
+                    )
+                    for alternative_id in alternative_ids
+                ),
+                winner_ids=recomputed_winners,
+                winner_changed=(
+                    set(baseline_winners)
+                    != set(recomputed_winners)
+                ),
+            ))
+
+    return BoundedWeightPerturbationResult(
+        session_id=session.id,
+        group_id=group_id,
+        absolute_weight_delta=absolute_weight_delta,
+        tie_atol=tolerance,
+        ranking_criterion_ids=criterion_ids,
+        baseline_applied_weights=baseline_weights,
+        baseline_entries=tuple(
+            DiagnosticRankEntry(
+                alternative_id=alternative_id,
+                score=baseline_scores[alternative_id],
+                statistical_rank=baseline_ranks[alternative_id],
+            )
+            for alternative_id in alternative_ids
+        ),
+        baseline_winner_ids=baseline_winners,
+        cases=tuple(cases),
+    )
+
+
+def calculate_criterion_removal_effects(
+    result: RunResult,
+    *,
+    tie_atol: float = TIE_ATOL,
+    group_id: str | None = None,
+) -> CriterionRemovalResult:
+    """Rerank the same alternatives after dropping each applied criterion."""
+    tolerance = _validated_tie_atol(tie_atol)
+    alternative_ids, baseline = _ranking_diagnostic_baseline(result, group_id)
+    session, _, ranking_config, _, _ = _resolved_recomputation_inputs(result)
+    if baseline.weighting is None:
+        raise ValueError("Criterion removal requires baseline weighting.")
+
+    criterion_ids = tuple(baseline.metadata.ranking_criterion_ids)
+    baseline_weights = {
+        cid: baseline.metadata.applied_criterion_weights[cid] for cid in criterion_ids
+    }
+    baseline_scores = _scores_by_alternative(baseline, alternative_ids=alternative_ids)
+    baseline_ranks = statistical_ranks(baseline_scores, tie_atol=tolerance)
+    baseline_winners = winner_ids(baseline_scores, tie_atol=tolerance)
+    decision_matrix = MCDMService.create_decision_matrix(session)
+    criteria_positions = {
+        criterion.id: index for index, criterion in enumerate(session.criteria)
+    }
+
+    cases = []
+    for removed_id in criterion_ids:
+        retained_ids = tuple(cid for cid in criterion_ids if cid != removed_id)
+        retained_mass = math.fsum(baseline_weights[cid] for cid in retained_ids)
+        if not retained_ids or retained_mass <= 0:
+            cases.append(CriterionRemovalCase(
+                removed_criterion_id=removed_id,
+                retained_criterion_ids=retained_ids,
+                status="not_evaluable",
+                reason=(
+                    "Removing this criterion leaves no ranking criteria."
+                    if not retained_ids
+                    else "The retained criteria have no positive applied ranking weight."
+                ),
+            ))
+            continue
+
+        applied_weights = {
+            cid: baseline_weights[cid] / retained_mass for cid in retained_ids
+        }
+        try:
+            ranking = _rank_with_applied_weights(
+                session=session,
+                decision_matrix=decision_matrix,
+                original_weighting=baseline.weighting,
+                selected_ids=retained_ids,
+                ranking_config=ranking_config,
+                applied_weights=applied_weights,
+            )
+        except UndefinedTopsisScoresError:
+            if not _identical_effective_alternatives(
+                decision_matrix, criteria_positions, applied_weights,
+            ):
+                raise
+            cases.append(CriterionRemovalCase(
+                removed_criterion_id=removed_id,
+                retained_criterion_ids=retained_ids,
+                status="not_evaluable",
+                reason=_IDENTICAL_EFFECTIVE_ALTERNATIVES_REASON,
+            ))
+            continue
+
+        scores = {
+            row.alternative_id: float(row.closeness_coefficient)
+            for row in ranking.rankings
+        }
+        if len(scores) != len(ranking.rankings) or set(scores) != set(alternative_ids):
+            raise ValueError(
+                "Criterion removal ranking must cover the baseline alternatives exactly once."
+            )
+        ranks = statistical_ranks(scores, tie_atol=tolerance)
+        winners = winner_ids(scores, tie_atol=tolerance)
+        cases.append(CriterionRemovalCase(
+            removed_criterion_id=removed_id,
+            retained_criterion_ids=retained_ids,
+            status="completed",
+            applied_weights=applied_weights,
+            alternative_changes=tuple(
+                LeaveOneOutAlternativeChange(
+                    alternative_id=aid,
+                    baseline_score=baseline_scores[aid],
+                    recomputed_score=scores[aid],
+                    score_delta=scores[aid] - baseline_scores[aid],
+                    baseline_statistical_rank=baseline_ranks[aid],
+                    recomputed_statistical_rank=ranks[aid],
+                    statistical_rank_delta=ranks[aid] - baseline_ranks[aid],
+                )
+                for aid in alternative_ids
+            ),
+            winner_ids=winners,
+            winner_changed=set(winners) != set(baseline_winners),
+        ))
+
+    return CriterionRemovalResult(
+        session_id=session.id,
+        group_id=group_id,
+        tie_atol=tolerance,
+        ranking_criterion_ids=criterion_ids,
+        baseline_applied_weights=baseline_weights,
+        alternative_ids=alternative_ids,
+        baseline_winner_ids=baseline_winners,
+        cases=tuple(cases),
+    )
+
+
+def calculate_alternative_removal_effects(
+    result: RunResult,
+    *,
+    tie_atol: float = TIE_ATOL,
+    group_id: str | None = None,
+) -> AlternativeRemovalResult:
+    """Hold applied weights fixed and rerank each set of surviving alternatives."""
+    tolerance = _validated_tie_atol(tie_atol)
+    alternative_ids, baseline = _ranking_diagnostic_baseline(result, group_id)
+    session, _, ranking_config, _, _ = _resolved_recomputation_inputs(result)
+    if baseline.weighting is None:
+        raise ValueError("Alternative removal requires baseline weighting.")
+
+    criterion_ids = tuple(baseline.metadata.ranking_criterion_ids)
+    applied_weights = {
+        cid: baseline.metadata.applied_criterion_weights[cid] for cid in criterion_ids
+    }
+    baseline_scores = _scores_by_alternative(baseline, alternative_ids=alternative_ids)
+    baseline_ranks = statistical_ranks(baseline_scores, tie_atol=tolerance)
+    baseline_winners = winner_ids(baseline_scores, tie_atol=tolerance)
+    decision_matrix = MCDMService.create_decision_matrix(session)
+    criteria_positions = {
+        criterion.id: index for index, criterion in enumerate(session.criteria)
+    }
+    selected_positions = tuple(criteria_positions[cid] for cid in criterion_ids)
+
+    cases = []
+    for removed_index, removed_id in enumerate(alternative_ids):
+        retained_positions = [
+            index for index in range(len(alternative_ids)) if index != removed_index
+        ]
+        retained_ids = tuple(alternative_ids[index] for index in retained_positions)
+        survivor_scores = {aid: baseline_scores[aid] for aid in retained_ids}
+        survivor_winners = (
+            winner_ids(survivor_scores, tie_atol=tolerance) if survivor_scores else ()
+        )
+        case_inputs = {
+            "removed_alternative_id": removed_id,
+            "retained_alternative_ids": retained_ids,
+            "baseline_winner_removed": removed_id in baseline_winners,
+            "baseline_survivor_winner_ids": survivor_winners,
+        }
+
+        if len(retained_ids) < 2:
+            cases.append(AlternativeRemovalCase(
+                **case_inputs,
+                status="not_evaluable",
+                reason="Alternative removal requires at least two surviving alternatives.",
+            ))
+            continue
+
+        survivor_matrix = decision_matrix[retained_positions]
+        zero_columns = np.all(survivor_matrix[:, selected_positions] == 0, axis=0)
+        if np.any(zero_columns):
+            zero_ids = [cid for cid, is_zero in zip(criterion_ids, zero_columns, strict=True) if is_zero]
+            cases.append(AlternativeRemovalCase(
+                **case_inputs,
+                status="not_evaluable",
+                reason=f"TOPSIS normalization is undefined for all-zero criteria: {', '.join(zero_ids)}.",
+            ))
+            continue
+
+        survivor_session = session.model_copy(update={
+            "alternatives": [session.alternatives[index] for index in retained_positions],
+        })
+        try:
+            ranking = _rank_with_applied_weights(
+                session=survivor_session,
+                decision_matrix=survivor_matrix,
+                original_weighting=baseline.weighting,
+                selected_ids=criterion_ids,
+                ranking_config=ranking_config,
+                applied_weights=applied_weights,
+            )
+        except UndefinedTopsisScoresError:
+            if not _identical_effective_alternatives(
+                survivor_matrix, criteria_positions, applied_weights,
+            ):
+                raise
+            cases.append(AlternativeRemovalCase(
+                **case_inputs,
+                status="not_evaluable",
+                reason=_IDENTICAL_EFFECTIVE_ALTERNATIVES_REASON,
+            ))
+            continue
+
+        scores = {
+            row.alternative_id: float(row.closeness_coefficient)
+            for row in ranking.rankings
+        }
+        if len(scores) != len(ranking.rankings) or set(scores) != set(retained_ids):
+            raise ValueError("Alternative removal ranking must cover the survivors exactly once.")
+
+        survivor_ranks = statistical_ranks(survivor_scores, tie_atol=tolerance)
+        ranks = statistical_ranks(scores, tie_atol=tolerance)
+        winners = winner_ids(scores, tie_atol=tolerance)
+        cases.append(AlternativeRemovalCase(
+            **case_inputs,
+            status="completed",
+            alternative_changes=tuple(
+                LeaveOneOutAlternativeChange(
+                    alternative_id=aid,
+                    baseline_score=survivor_scores[aid],
+                    recomputed_score=scores[aid],
+                    score_delta=scores[aid] - survivor_scores[aid],
+                    baseline_statistical_rank=survivor_ranks[aid],
+                    recomputed_statistical_rank=ranks[aid],
+                    statistical_rank_delta=ranks[aid] - survivor_ranks[aid],
+                )
+                for aid in retained_ids
+            ),
+            recomputed_winner_ids=winners,
+            survivor_winner_changed=set(winners) != set(survivor_winners),
+        ))
+
+    return AlternativeRemovalResult(
+        session_id=session.id,
+        group_id=group_id,
+        tie_atol=tolerance,
+        ranking_criterion_ids=criterion_ids,
+        applied_weights=applied_weights,
+        baseline_entries=tuple(
+            DiagnosticRankEntry(
+                alternative_id=aid,
+                score=baseline_scores[aid],
+                statistical_rank=baseline_ranks[aid],
+            )
+            for aid in alternative_ids
+        ),
         baseline_winner_ids=baseline_winners,
         cases=tuple(cases),
     )

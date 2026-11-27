@@ -126,6 +126,7 @@ class LeaveOneGroupOutModelTests(unittest.TestCase):
                 ),
             },
             {"baseline_winner_ids": ()},
+            {"baseline_winner_ids": ("A", "A")},
             {"recomputed_winner_ids": ()},
             {"winner_changed": False},
             {"criterion_weight_changes": ()},
@@ -149,6 +150,8 @@ class LeaveOneGroupOutModelTests(unittest.TestCase):
             {"not_evaluable_reason": None},
             {"not_evaluable_reason": ""},
             {"not_evaluable_reason": "   "},
+            {"baseline_winner_ids": ()},
+            {"baseline_winner_ids": ("A", "A")},
             {"winner_changed": False},
             {"recomputed_winner_ids": ("A",)},
             {

@@ -185,8 +185,9 @@ Address:
 2. The recorded alternative ranking, scores, and ties, when available.
 3. Participation and representation, distinguishing configured voting power
    from effective voting power.
-4. Only those agreement, sensitivity, influence, or robustness diagnostics
-   explicitly supplied in diagnostics.
+4. Material findings from the supplied diagnostics, including score/rank
+   margins, consistency warnings, and sensitivity to the tested changes.
+   Keep these findings specific to the group and the completed cases.
 5. Material limitations not already captured by the required application
    disclosures.
 

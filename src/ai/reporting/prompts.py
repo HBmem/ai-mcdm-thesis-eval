@@ -111,6 +111,9 @@ Optional analytical sections follow strict rules:
 When an applicable completed diagnostic is supplied, include
 the corresponding section. Every claim in that section must
 cite the applicable diagnostic evidence.
+Use each diagnostic only for the entities it covers. Identify
+when a sensitivity finding concerns a group ranking and when
+it concerns the aggregate session ranking.
 
 Do not create one report claim for every comprehension
 finding. Combine related evidence into a smaller set of

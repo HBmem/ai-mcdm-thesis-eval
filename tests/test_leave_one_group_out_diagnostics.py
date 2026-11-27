@@ -188,6 +188,31 @@ class LeaveOneGroupOutDiagnosticsTests(unittest.TestCase):
             ("G1",),
         )
 
+    def test_criterion_weight_changes_preserve_baseline_ranking_order(self):
+        self.baseline_session.metadata.ranking_criterion_ids = [
+            "C2",
+            "C1",
+        ]
+
+        result, _ = self._run()
+
+        self.assertEqual(
+            tuple(
+                change.criterion_id
+                for change in result.cases[0].criterion_weight_changes
+            ),
+            ("C2", "C1"),
+        )
+
+    def test_ranking_criteria_must_match_baseline_applied_weights(self):
+        self.baseline_session.metadata.ranking_criterion_ids = ["C1"]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Baseline ranking criteria must match baseline applied weights",
+        ):
+            self._run()
+
     def test_zero_remaining_voting_power_produces_not_evaluable_cases(self):
         groups = (
             self._group("G1", 0.0),
